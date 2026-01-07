@@ -140,17 +140,32 @@ export default apiInitializer("1.0.0", (api) => {
       const posts = document.querySelectorAll(".topic-post");
       console.log("[Post Translator] Found posts:", posts.length);
 
-      posts.forEach((post) => {
-        const postId = post.dataset.postId;
-        if (!postId) return;
+      posts.forEach((post, index) => {
+        console.log(`[Post Translator] Processing post ${index}:`, post);
+        console.log("[Post Translator] Post dataset:", post.dataset);
+        console.log("[Post Translator] Post ID attribute:", post.getAttribute("data-post-id"));
+
+        const postId = post.dataset.postId || post.getAttribute("data-post-id");
+        console.log("[Post Translator] Post ID:", postId);
+
+        if (!postId) {
+          console.log("[Post Translator] No post ID found, skipping");
+          return;
+        }
 
         // Skip if button already exists
         if (post.querySelector(".post-translate-btn")) {
+          console.log("[Post Translator] Button already exists for post", postId);
           return;
         }
 
         // Find the actions container
+        const postControls = post.querySelector(".post-controls");
+        console.log("[Post Translator] Post controls:", postControls);
+
         const actionsContainer = post.querySelector(".post-controls .actions");
+        console.log("[Post Translator] Actions container:", actionsContainer);
+
         if (!actionsContainer) {
           console.log("[Post Translator] No actions container for post", postId);
           return;
@@ -168,6 +183,7 @@ export default apiInitializer("1.0.0", (api) => {
 
         actionsContainer.appendChild(button);
         console.log("[Post Translator] Button added for post", postId);
+        console.log("[Post Translator] Actions container after append:", actionsContainer.innerHTML);
       });
     }, 500);
   });
