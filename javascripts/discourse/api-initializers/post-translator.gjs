@@ -125,41 +125,28 @@ export default apiInitializer("1.0.0", (api) => {
   console.log("[Post Translator] Initializing for user:", currentUser.username);
 
   // Use the new value transformer API for post menu buttons
+  // value is a DAG (Directed Acyclic Graph) object
   api.registerValueTransformer("post-menu-buttons", ({ value, context }) => {
-    console.log("[Post Translator] Transformer called, value type:", typeof value, value);
-    console.log("[Post Translator] Context:", context);
-
     const postId = context?.post?.id;
     if (!postId) {
-      console.log("[Post Translator] No post ID in context");
       return value;
     }
 
     const state = translationState.get(postId);
     const isTranslated = state?.isTranslated || false;
 
-    // Add translate button - value might be a Set or other structure
-    const buttonConfig = {
-      id: "translate",
-      action: () => handleTranslate(postId),
+    // Add button using DAG .add() method
+    value.add("translate", {
       icon: "globe",
       className: "post-translate-btn",
       title: isTranslated
-        ? i18n(themePrefix("post_translator.show_original_button"))
-        : i18n(themePrefix("post_translator.translate_button")),
+        ? themePrefix("post_translator.show_original_button")
+        : themePrefix("post_translator.translate_button"),
       label: isTranslated
-        ? i18n(themePrefix("post_translator.show_original_button"))
-        : i18n(themePrefix("post_translator.translate_button")),
-    };
-
-    // Handle different value types
-    if (Array.isArray(value)) {
-      value.push(buttonConfig);
-    } else if (value instanceof Set) {
-      value.add("translate");
-    } else if (typeof value === "object" && value !== null) {
-      value.translate = buttonConfig;
-    }
+        ? themePrefix("post_translator.show_original_button")
+        : themePrefix("post_translator.translate_button"),
+      action: () => handleTranslate(postId),
+    });
 
     return value;
   });
