@@ -1,5 +1,5 @@
 import { apiInitializer } from "discourse/lib/api";
-import { i18n, themePrefix } from "discourse-i18n";
+import { i18n } from "discourse-i18n";
 
 // State management for tracking translations per element
 const translationState = new WeakMap();
