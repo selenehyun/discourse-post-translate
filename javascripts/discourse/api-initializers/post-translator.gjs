@@ -132,6 +132,22 @@ async function handleTranslate(postId, button) {
 }
 
 /**
+ * Restore translation view if post was showing translation
+ */
+function restoreTranslationView(postId) {
+  const state = translationState.get(postId);
+  if (!state?.isTranslated || !state?.translatedHTML) return;
+
+  const elements = getOrCreateTranslationContainer(postId);
+  if (!elements) return;
+
+  const { cookedElement, container } = elements;
+  container.innerHTML = state.translatedHTML;
+  cookedElement.style.display = "none";
+  container.style.display = "";
+}
+
+/**
  * Add translate button to a single post
  */
 function addButtonToPost(post) {
@@ -141,16 +157,19 @@ function addButtonToPost(post) {
   const postId = articleElement.dataset.postId;
   if (!postId) return;
 
+  const numericPostId = parseInt(postId);
   const actionsContainer = post.querySelector(".post-controls .actions");
   if (!actionsContainer) return;
 
   // Check if button already exists in DOM
   if (actionsContainer.querySelector(".post-translate-btn")) {
+    // Button exists but need to check if translation view needs restoration
+    restoreTranslationView(numericPostId);
     return;
   }
 
   // Get current state for label
-  const state = translationState.get(parseInt(postId));
+  const state = translationState.get(numericPostId);
   const isTranslated = state?.isTranslated || false;
 
   const label = isTranslated
@@ -167,10 +186,13 @@ function addButtonToPost(post) {
   button.addEventListener("click", (e) => {
     e.preventDefault();
     e.stopPropagation();
-    handleTranslate(parseInt(postId), button);
+    handleTranslate(numericPostId, button);
   });
 
   actionsContainer.appendChild(button);
+
+  // Restore translation view if this post was showing translation before re-render
+  restoreTranslationView(numericPostId);
 }
 
 /**
