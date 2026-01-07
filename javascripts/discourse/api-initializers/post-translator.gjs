@@ -130,54 +130,100 @@ export default apiInitializer("1.0.0", (api) => {
 
   console.log("[Post Translator] Initializing for user:", currentUser.username);
 
-  // Use onPageChange to add buttons after page renders
-  api.onPageChange((url, title) => {
-    console.log("[Post Translator] Page changed:", url);
+  /**
+   * Add translate button to a post if not already present
+   */
+  function addButtonToPost(post) {
+    const articleElement = post.querySelector("article[data-post-id]");
+    const postId = articleElement ? articleElement.dataset.postId : null;
 
-    // Wait for DOM to be ready
-    setTimeout(() => {
-      // Find all posts that don't have translate button yet
-      const posts = document.querySelectorAll(".topic-post");
-      console.log("[Post Translator] Found posts:", posts.length);
+    if (!postId) return;
 
-      posts.forEach((post, index) => {
-        // Get post number (data-post-number) - post ID is in article element
-        const postNumber = post.dataset.postNumber;
-        const articleElement = post.querySelector("article[data-post-id]");
-        const postId = articleElement ? articleElement.dataset.postId : null;
+    // Skip if button already exists
+    if (post.querySelector(".post-translate-btn")) {
+      return;
+    }
 
-        console.log(`[Post Translator] Processing post ${index}: number=${postNumber}, id=${postId}`);
+    // Find the actions container
+    const actionsContainer = post.querySelector(".post-controls .actions");
+    if (!actionsContainer) return;
 
-        if (!postId) {
-          console.log("[Post Translator] No post ID found, skipping");
-          return;
+    // Check current translation state
+    const state = translationState.get(parseInt(postId));
+    const isTranslated = state?.isTranslated || false;
+
+    // Create button
+    const button = document.createElement("button");
+    button.className = "btn btn-icon-text post-translate-btn btn-flat";
+    button.type = "button";
+    button.title = isTranslated ? "Show original" : "Translate";
+    button.dataset.postId = postId;
+
+    const label = isTranslated
+      ? i18n(themePrefix("post_translator.show_original_button"))
+      : i18n(themePrefix("post_translator.translate_button"));
+
+    button.innerHTML = `<svg class="fa d-icon d-icon-globe svg-icon svg-string" xmlns="http://www.w3.org/2000/svg"><use href="#globe"></use></svg><span class="d-button-label">${label}</span>`;
+
+    button.addEventListener("click", () => handleTranslate(parseInt(postId), settings));
+
+    actionsContainer.appendChild(button);
+  }
+
+  /**
+   * Scan and add buttons to all visible posts
+   */
+  function addButtonsToAllPosts() {
+    const posts = document.querySelectorAll(".topic-post");
+    posts.forEach(addButtonToPost);
+  }
+
+  // Initial scan on page change
+  api.onPageChange(() => {
+    setTimeout(addButtonsToAllPosts, 300);
+  });
+
+  // Use MutationObserver to handle re-renders from virtual scrolling
+  const observer = new MutationObserver((mutations) => {
+    let shouldScan = false;
+
+    for (const mutation of mutations) {
+      // Check if nodes were added
+      if (mutation.addedNodes.length > 0) {
+        for (const node of mutation.addedNodes) {
+          if (node.nodeType === Node.ELEMENT_NODE) {
+            // Check if it's a post or contains posts
+            if (node.classList?.contains("topic-post") || node.querySelector?.(".topic-post")) {
+              shouldScan = true;
+              break;
+            }
+          }
         }
+      }
+      if (shouldScan) break;
+    }
 
-        // Skip if button already exists
-        if (post.querySelector(".post-translate-btn")) {
-          return;
-        }
+    if (shouldScan) {
+      // Debounce the scan
+      clearTimeout(observer.scanTimeout);
+      observer.scanTimeout = setTimeout(addButtonsToAllPosts, 100);
+    }
+  });
 
-        // Find the actions container
-        const actionsContainer = post.querySelector(".post-controls .actions");
-        if (!actionsContainer) {
-          console.log("[Post Translator] No actions container for post", postId);
-          return;
-        }
-
-        // Create button
-        const button = document.createElement("button");
-        button.className = "btn btn-icon-text post-translate-btn btn-flat";
-        button.type = "button";
-        button.title = "Translate";
-        button.dataset.postId = postId;
-        button.innerHTML = `<svg class="fa d-icon d-icon-globe svg-icon svg-string" xmlns="http://www.w3.org/2000/svg"><use href="#globe"></use></svg><span class="d-button-label">${i18n(themePrefix("post_translator.translate_button"))}</span>`;
-
-        button.addEventListener("click", () => handleTranslate(parseInt(postId), settings));
-
-        actionsContainer.appendChild(button);
-        console.log("[Post Translator] Button added for post", postId);
+  // Start observing the topic stream
+  const startObserving = () => {
+    const topicStream = document.querySelector(".topic-stream, .post-stream, #topic");
+    if (topicStream) {
+      observer.observe(topicStream, {
+        childList: true,
+        subtree: true,
       });
-    }, 500);
+      console.log("[Post Translator] MutationObserver started");
+    }
+  };
+
+  // Start observer on page change
+  api.onPageChange(() => {
+    setTimeout(startObserving, 500);
   });
 });
