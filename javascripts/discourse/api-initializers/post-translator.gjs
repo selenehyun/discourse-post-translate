@@ -143,46 +143,34 @@ async function translatePost(postId, targetLang, apiUrl, timeout, debugMode) {
 /**
  * Handle translation toggle click
  */
-async function handleTranslateClick(event, element, postId, settings) {
+async function handleTranslateClick(event, cookedElement, postId, settings, originalHTML) {
+  console.log("[Post Translator] Button clicked, postId:", postId);
+
   const button = event.currentTarget;
   const container = button.closest(".post-translate-container");
 
   // Get or initialize state for this element
-  let state = translationState.get(element);
+  let state = translationState.get(cookedElement);
   if (!state) {
     state = {
       isTranslated: false,
-      originalHTML: null,
+      originalHTML: originalHTML,
       translatedHTML: null,
     };
-    translationState.set(element, state);
-  }
-
-  // Find the cooked content
-  const cookedContent = element.querySelector(".cooked");
-  if (!cookedContent) {
-    if (settings.debug_mode) {
-      console.error("[Post Translator] Could not find .cooked element");
-    }
-    return;
+    translationState.set(cookedElement, state);
   }
 
   // Toggle back to original
   if (state.isTranslated) {
-    cookedContent.innerHTML = state.originalHTML;
+    cookedElement.innerHTML = state.originalHTML;
     state.isTranslated = false;
     updateButtonLabel(button, false);
     return;
   }
 
-  // Store original content
-  if (!state.originalHTML) {
-    state.originalHTML = cookedContent.innerHTML;
-  }
-
   // If we already have a translation, use cached version
   if (state.translatedHTML) {
-    cookedContent.innerHTML = state.translatedHTML;
+    cookedElement.innerHTML = state.translatedHTML;
     state.isTranslated = true;
     updateButtonLabel(button, true);
     return;
@@ -211,7 +199,7 @@ async function handleTranslateClick(event, element, postId, settings) {
 
   if (result.success) {
     state.translatedHTML = result.translatedText;
-    cookedContent.innerHTML = state.translatedHTML;
+    cookedElement.innerHTML = state.translatedHTML;
     state.isTranslated = true;
     updateButtonLabel(button, true);
   } else {
@@ -258,9 +246,12 @@ export default apiInitializer("1.0.0", (api) => {
       }
 
       // Skip if button already added
-      if (element.querySelector(".post-translate-container")) {
+      if (element.parentElement?.querySelector(".post-translate-container")) {
         return;
       }
+
+      // Store original content before any modification
+      const originalHTML = element.innerHTML;
 
       // Create container for button and status
       const container = document.createElement("div");
@@ -269,13 +260,13 @@ export default apiInitializer("1.0.0", (api) => {
       // Create and add button
       const button = createTranslateButton(false);
       button.addEventListener("click", (event) =>
-        handleTranslateClick(event, element, post.id, settings)
+        handleTranslateClick(event, element, post.id, settings, originalHTML)
       );
 
       container.appendChild(button);
 
-      // Append to the end of the element
-      element.appendChild(container);
+      // Insert after the cooked element, not inside it
+      element.parentElement.insertBefore(container, element.nextSibling);
     },
     {
       id: "post-translator",
