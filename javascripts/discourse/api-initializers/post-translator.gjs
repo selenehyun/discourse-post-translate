@@ -7,15 +7,6 @@ const translationState = new Map();
 const buttonsAdded = new Set();
 
 /**
- * Debug logging helper - only logs when debug_mode is enabled
- */
-function debugLog(...args) {
-  if (settings.debug_mode) {
-    console.log("[Post Translator]", ...args);
-  }
-}
-
-/**
  * Get the target language from browser settings
  */
 function getTargetLanguage() {
@@ -27,66 +18,19 @@ function getTargetLanguage() {
  * Call the translation API
  */
 async function translatePost(postId, targetLang) {
-  debugLog("Calling API for post:", postId, "target:", targetLang);
+  console.log("[Post Translator] Calling API (MOCKED)");
+  console.log("[Post Translator] Post ID:", postId);
+  console.log("[Post Translator] Target language:", targetLang);
 
-  const controller = new AbortController();
-  const timeoutId = setTimeout(() => controller.abort(), settings.translation_api_timeout);
+  // === MOCK RESPONSE FOR TESTING ===
+  await new Promise((resolve) => setTimeout(resolve, 500));
 
-  try {
-    const response = await fetch(settings.translation_api_url, {
-      method: "POST",
-      headers: {
-        "Content-Type": "application/json",
-      },
-      body: JSON.stringify({
-        post_id: postId,
-        target_language: targetLang,
-      }),
-      signal: controller.signal,
-    });
-
-    clearTimeout(timeoutId);
-
-    if (!response.ok) {
-      debugLog("API error:", response.status, response.statusText);
-      return {
-        success: false,
-        error: i18n(themePrefix("post_translator.error_generic")),
-      };
-    }
-
-    const data = await response.json();
-    debugLog("API response:", data);
-
-    if (data.success) {
-      return {
-        success: true,
-        translatedText: data.translated_text,
-        detectedLanguage: data.detected_language,
-      };
-    } else {
-      return {
-        success: false,
-        error: data.error?.message || i18n(themePrefix("post_translator.error_generic")),
-      };
-    }
-  } catch (error) {
-    clearTimeout(timeoutId);
-
-    if (error.name === "AbortError") {
-      debugLog("API timeout");
-      return {
-        success: false,
-        error: i18n(themePrefix("post_translator.error_timeout")),
-      };
-    }
-
-    debugLog("Network error:", error);
-    return {
-      success: false,
-      error: i18n(themePrefix("post_translator.error_network")),
-    };
-  }
+  return {
+    success: true,
+    translatedText: `<p><strong>[번역됨 - Post ID: ${postId}]</strong></p><p>이것은 테스트용 번역 결과입니다. 원본 내용이 이 텍스트로 대체되어야 합니다.</p><p>Target language: ${targetLang}</p>`,
+    detectedLanguage: "en",
+  };
+  // === END MOCK ===
 }
 
 /**
@@ -116,11 +60,11 @@ function getOrCreateTranslationContainer(postId) {
  * Handle translation toggle
  */
 async function handleTranslate(postId, button) {
-  debugLog("handleTranslate called for post:", postId);
+  console.log("[Post Translator] handleTranslate called for post:", postId);
 
   const elements = getOrCreateTranslationContainer(postId);
   if (!elements) {
-    debugLog("Could not find elements for post", postId);
+    console.error("[Post Translator] Could not find elements for post", postId);
     return;
   }
 
@@ -268,11 +212,11 @@ export default apiInitializer("1.0.0", (api) => {
   // Only show for logged-in users
   const currentUser = api.getCurrentUser();
   if (!currentUser) {
-    debugLog("User not logged in, skipping");
+    console.log("[Post Translator] User not logged in, skipping");
     return;
   }
 
-  debugLog("Initializing for user:", currentUser.username);
+  console.log("[Post Translator] Initializing for user:", currentUser.username);
 
   let observer = null;
   let scanTimeout = null;
