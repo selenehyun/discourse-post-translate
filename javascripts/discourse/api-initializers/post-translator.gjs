@@ -31,42 +31,6 @@ function createTranslateButton(isTranslated) {
 }
 
 /**
- * Create loading indicator
- */
-function createLoadingIndicator() {
-  const loading = document.createElement("div");
-  loading.className = "post-translate-loading";
-  loading.innerHTML = `
-    <span class="spinner small"></span>
-    <span class="loading-text">${i18n(themePrefix("post_translator.translating"))}</span>
-  `;
-  return loading;
-}
-
-/**
- * Show error message
- */
-function showError(container, errorKey) {
-  const existingError = container.querySelector(".post-translate-error");
-  if (existingError) {
-    existingError.remove();
-  }
-
-  const error = document.createElement("div");
-  error.className = "post-translate-error";
-  error.textContent = i18n(themePrefix(`post_translator.${errorKey}`));
-
-  container.appendChild(error);
-
-  // Auto-remove error after 5 seconds
-  setTimeout(() => {
-    if (error.parentNode) {
-      error.remove();
-    }
-  }, 5000);
-}
-
-/**
  * Update button label based on state
  */
 function updateButtonLabel(button, isTranslated) {
@@ -161,7 +125,6 @@ async function handleTranslateClick(event, cookedElement, postId, settings, orig
   console.log("[Post Translator] Button clicked, postId:", postId);
 
   const button = event.currentTarget;
-  const container = button.closest(".post-translate-container");
 
   // Get or initialize state for this element
   let state = translationState.get(cookedElement);
@@ -192,8 +155,8 @@ async function handleTranslateClick(event, cookedElement, postId, settings, orig
 
   // Show loading state
   button.disabled = true;
-  const loadingIndicator = createLoadingIndicator();
-  container.appendChild(loadingIndicator);
+  const originalButtonText = button.innerHTML;
+  button.innerHTML = `<span class="d-button-label">${i18n(themePrefix("post_translator.translating"))}</span>`;
 
   // Get target language from browser
   const targetLang = getTargetLanguage();
@@ -207,8 +170,7 @@ async function handleTranslateClick(event, cookedElement, postId, settings, orig
     settings.debug_mode
   );
 
-  // Remove loading indicator
-  loadingIndicator.remove();
+  // Restore button state
   button.disabled = false;
 
   if (result.success) {
@@ -217,7 +179,13 @@ async function handleTranslateClick(event, cookedElement, postId, settings, orig
     state.isTranslated = true;
     updateButtonLabel(button, true);
   } else {
-    showError(container, result.errorKey);
+    // Show error briefly in button, then restore
+    button.innerHTML = `<span class="d-button-label">${i18n(themePrefix(`post_translator.${result.errorKey}`))}</span>`;
+    button.classList.add("btn-danger");
+    setTimeout(() => {
+      button.innerHTML = originalButtonText;
+      button.classList.remove("btn-danger");
+    }, 3000);
   }
 }
 
@@ -259,28 +227,33 @@ export default apiInitializer("1.0.0", (api) => {
         return;
       }
 
-      // Skip if button already added (check inside the element)
-      if (element.querySelector(".post-translate-container")) {
+      // Find the post-controls element (traverse up to find article, then find post-controls)
+      const article = element.closest("article.boxed, .topic-post");
+      if (!article) {
         return;
       }
 
-      // Store original content before any modification
+      const postControls = article.querySelector(".post-controls");
+      if (!postControls) {
+        return;
+      }
+
+      // Skip if button already added
+      if (postControls.querySelector(".post-translate-btn")) {
+        return;
+      }
+
+      // Store original content
       const originalHTML = element.innerHTML;
 
-      // Create container for button and status
-      const container = document.createElement("div");
-      container.className = "post-translate-container";
-
-      // Create and add button
+      // Create translate button
       const button = createTranslateButton(false);
       button.addEventListener("click", (event) =>
         handleTranslateClick(event, element, post.id, settings, originalHTML)
       );
 
-      container.appendChild(button);
-
-      // Append to the end of the cooked element
-      element.appendChild(container);
+      // Append button to post-controls
+      postControls.appendChild(button);
     },
     {
       id: "post-translator",

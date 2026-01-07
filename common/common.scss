@@ -1,19 +1,8 @@
 // Post Translator Theme Component Styles
 
-.post-translate-container {
-  margin-top: 1em;
-  padding-top: 0.75em;
-  border-top: 1px solid var(--primary-low);
-  display: flex;
-  align-items: center;
-  gap: 0.5em;
-  flex-wrap: wrap;
-}
-
-// Translation button styling
+// Translation button in post-controls
 .post-translate-btn {
-  font-size: var(--font-down-1);
-  padding: 0.4em 0.8em;
+  margin-left: 0.5em;
 
   &:hover {
     background-color: var(--primary-low);
@@ -28,63 +17,5 @@
     display: inline-flex;
     align-items: center;
     gap: 0.3em;
-  }
-}
-
-// Loading state
-.post-translate-loading {
-  display: inline-flex;
-  align-items: center;
-  gap: 0.5em;
-  color: var(--primary-medium);
-  font-size: var(--font-down-1);
-
-  .spinner {
-    width: 14px;
-    height: 14px;
-    border: 2px solid var(--primary-low);
-    border-top-color: var(--primary);
-    border-radius: 50%;
-    animation: post-translate-spin 0.8s linear infinite;
-  }
-}
-
-@keyframes post-translate-spin {
-  to {
-    transform: rotate(360deg);
-  }
-}
-
-// Error message styling
-.post-translate-error {
-  color: var(--danger);
-  font-size: var(--font-down-1);
-  padding: 0.3em 0.6em;
-  background-color: var(--danger-low);
-  border-radius: var(--d-border-radius);
-  animation: post-translate-fadeIn 0.2s ease-in;
-}
-
-@keyframes post-translate-fadeIn {
-  from {
-    opacity: 0;
-    transform: translateY(-5px);
-  }
-  to {
-    opacity: 1;
-    transform: translateY(0);
-  }
-}
-
-// Mobile responsiveness
-@media screen and (max-width: 600px) {
-  .post-translate-container {
-    margin-top: 0.75em;
-    padding-top: 0.5em;
-  }
-
-  .post-translate-btn {
-    width: 100%;
-    justify-content: center;
   }
 }
