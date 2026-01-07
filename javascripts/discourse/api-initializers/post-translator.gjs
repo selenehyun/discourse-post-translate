@@ -132,6 +132,11 @@ export default apiInitializer("1.0.0", (api) => {
       return value;
     }
 
+    // Check if button already exists to prevent infinite re-render
+    if (value.has && value.has("translate")) {
+      return value;
+    }
+
     const state = translationState.get(postId);
     const isTranslated = state?.isTranslated || false;
 
