@@ -126,12 +126,20 @@ export default apiInitializer("1.0.0", (api) => {
 
   // Use the new value transformer API for post menu buttons
   api.registerValueTransformer("post-menu-buttons", ({ value, context }) => {
-    const postId = context.post.id;
+    console.log("[Post Translator] Transformer called, value type:", typeof value, value);
+    console.log("[Post Translator] Context:", context);
+
+    const postId = context?.post?.id;
+    if (!postId) {
+      console.log("[Post Translator] No post ID in context");
+      return value;
+    }
+
     const state = translationState.get(postId);
     const isTranslated = state?.isTranslated || false;
 
-    // Add translate button
-    value.push({
+    // Add translate button - value might be a Set or other structure
+    const buttonConfig = {
       id: "translate",
       action: () => handleTranslate(postId),
       icon: "globe",
@@ -142,12 +150,16 @@ export default apiInitializer("1.0.0", (api) => {
       label: isTranslated
         ? i18n(themePrefix("post_translator.show_original_button"))
         : i18n(themePrefix("post_translator.translate_button")),
-      position: "first",
-      translatedKey: "post_translator.translate_button",
-      data: {
-        "post-id": postId,
-      },
-    });
+    };
+
+    // Handle different value types
+    if (Array.isArray(value)) {
+      value.push(buttonConfig);
+    } else if (value instanceof Set) {
+      value.add("translate");
+    } else if (typeof value === "object" && value !== null) {
+      value.translate = buttonConfig;
+    }
 
     return value;
   });
