@@ -1,0 +1,27 @@
+translation_api_url:
+  type: string
+  default: "https://api.example.com/translate"
+  description:
+    en: "URL of the translation API endpoint"
+    ko: "번역 API 엔드포인트 URL"
+
+translation_api_timeout:
+  type: integer
+  default: 10000
+  description:
+    en: "API request timeout in milliseconds"
+    ko: "API 요청 타임아웃 (밀리초)"
+
+show_translation_button:
+  type: bool
+  default: true
+  description:
+    en: "Show translation button on posts"
+    ko: "게시물에 번역 버튼 표시"
+
+debug_mode:
+  type: bool
+  default: false
+  description:
+    en: "Enable debug logging to console"
+    ko: "콘솔에 디버그 로깅 활성화"

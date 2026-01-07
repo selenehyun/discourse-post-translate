@@ -1,0 +1,15 @@
+en:
+  post_translator:
+    translate_button: "Translate"
+    show_original_button: "Show Original"
+    translating: "Translating..."
+    error_generic: "Translation failed. Please try again."
+    error_timeout: "Translation request timed out."
+    error_network: "Network error. Please check your connection."
+
+  theme_metadata:
+    settings:
+      translation_api_url: "URL of the translation API endpoint"
+      translation_api_timeout: "API request timeout in milliseconds"
+      show_translation_button: "Show translation button on posts"
+      debug_mode: "Enable debug logging to console"

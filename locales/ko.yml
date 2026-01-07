@@ -1,0 +1,15 @@
+ko:
+  post_translator:
+    translate_button: "번역"
+    show_original_button: "원문 보기"
+    translating: "번역 중..."
+    error_generic: "번역에 실패했습니다. 다시 시도해주세요."
+    error_timeout: "번역 요청 시간이 초과되었습니다."
+    error_network: "네트워크 오류입니다. 연결을 확인해주세요."
+
+  theme_metadata:
+    settings:
+      translation_api_url: "번역 API 엔드포인트 URL"
+      translation_api_timeout: "API 요청 타임아웃 (밀리초)"
+      show_translation_button: "게시물에 번역 버튼 표시"
+      debug_mode: "콘솔에 디버그 로깅 활성화"
