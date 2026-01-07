@@ -34,25 +34,46 @@ async function translatePost(postId, targetLang) {
 }
 
 /**
+ * Get or create translation container for a post
+ */
+function getOrCreateTranslationContainer(postId) {
+  const article = document.querySelector(`article[data-post-id="${postId}"]`);
+  if (!article) return null;
+
+  const cookedElement = article.querySelector(".cooked");
+  if (!cookedElement) return null;
+
+  // Check if translation container already exists
+  let container = article.querySelector(".post-translator-content");
+  if (!container) {
+    // Create container as sibling of cooked
+    container = document.createElement("div");
+    container.className = "post-translator-content cooked";
+    container.style.display = "none";
+    cookedElement.parentNode.insertBefore(container, cookedElement.nextSibling);
+  }
+
+  return { cookedElement, container };
+}
+
+/**
  * Handle translation toggle
  */
 async function handleTranslate(postId, button) {
   console.log("[Post Translator] handleTranslate called for post:", postId);
 
-  const cookedElement = document.querySelector(
-    `article[data-post-id="${postId}"] .cooked`
-  );
-
-  if (!cookedElement) {
-    console.error("[Post Translator] Could not find cooked element for post", postId);
+  const elements = getOrCreateTranslationContainer(postId);
+  if (!elements) {
+    console.error("[Post Translator] Could not find elements for post", postId);
     return;
   }
+
+  const { cookedElement, container } = elements;
 
   let state = translationState.get(postId);
   if (!state) {
     state = {
       isTranslated: false,
-      originalHTML: cookedElement.innerHTML,
       translatedHTML: null,
     };
     translationState.set(postId, state);
@@ -62,7 +83,8 @@ async function handleTranslate(postId, button) {
 
   // Toggle back to original
   if (state.isTranslated) {
-    cookedElement.innerHTML = state.originalHTML;
+    cookedElement.style.display = "";
+    container.style.display = "none";
     state.isTranslated = false;
     if (labelSpan) {
       labelSpan.textContent = i18n(themePrefix("post_translator.translate_button"));
@@ -72,7 +94,9 @@ async function handleTranslate(postId, button) {
 
   // Use cached translation if available
   if (state.translatedHTML) {
-    cookedElement.innerHTML = state.translatedHTML;
+    container.innerHTML = state.translatedHTML;
+    cookedElement.style.display = "none";
+    container.style.display = "";
     state.isTranslated = true;
     if (labelSpan) {
       labelSpan.textContent = i18n(themePrefix("post_translator.show_original_button"));
@@ -93,7 +117,9 @@ async function handleTranslate(postId, button) {
 
   if (result.success) {
     state.translatedHTML = result.translatedText;
-    cookedElement.innerHTML = state.translatedHTML;
+    container.innerHTML = state.translatedHTML;
+    cookedElement.style.display = "none";
+    container.style.display = "";
     state.isTranslated = true;
     if (labelSpan) {
       labelSpan.textContent = i18n(themePrefix("post_translator.show_original_button"));
