@@ -82,12 +82,24 @@ function updateButtonLabel(button, isTranslated) {
  * Call the translation API
  */
 async function translatePost(postId, targetLang, apiUrl, timeout, debugMode) {
-  if (debugMode) {
-    console.log("[Post Translator] Calling API:", apiUrl);
-    console.log("[Post Translator] Post ID:", postId);
-    console.log("[Post Translator] Target language:", targetLang);
-  }
+  console.log("[Post Translator] Calling API (MOCKED)");
+  console.log("[Post Translator] Post ID:", postId);
+  console.log("[Post Translator] Target language:", targetLang);
 
+  // === MOCK RESPONSE FOR TESTING ===
+  // Simulate network delay
+  await new Promise((resolve) => setTimeout(resolve, 500));
+
+  // Return mocked translation
+  return {
+    success: true,
+    translatedText: `<p><strong>[번역됨 - Post ID: ${postId}]</strong></p><p>이것은 테스트용 번역 결과입니다. 원본 내용이 이 텍스트로 대체되어야 합니다.</p><p>Target language: ${targetLang}</p>`,
+    detectedLanguage: "en",
+  };
+  // === END MOCK ===
+
+  /*
+  // === ORIGINAL API CALL (commented out for testing) ===
   const controller = new AbortController();
   const timeoutId = setTimeout(() => controller.abort(), timeout);
 
@@ -138,6 +150,8 @@ async function translatePost(postId, targetLang, apiUrl, timeout, debugMode) {
 
     return { success: false, errorKey: "error_generic" };
   }
+  // === END ORIGINAL API CALL ===
+  */
 }
 
 /**
