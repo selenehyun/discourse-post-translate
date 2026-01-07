@@ -18,14 +18,15 @@ function getTargetLanguage() {
  */
 function createTranslateButton(isTranslated) {
   const button = document.createElement("button");
-  button.className = "btn btn-default btn-small post-translate-btn";
+  button.className = "btn btn-icon-text post-translate-btn btn-flat";
   button.type = "button";
+  button.title = isTranslated ? "Show original" : "Translate";
 
   const label = isTranslated
     ? i18n(themePrefix("post_translator.show_original_button"))
     : i18n(themePrefix("post_translator.translate_button"));
 
-  button.innerHTML = `<span class="d-button-label">${label}</span>`;
+  button.innerHTML = `<svg class="fa d-icon d-icon-globe svg-icon svg-string" xmlns="http://www.w3.org/2000/svg"><use href="#globe"></use></svg><span class="d-button-label">${label}</span>`;
 
   return button;
 }
@@ -40,6 +41,7 @@ function updateButtonLabel(button, isTranslated) {
       ? i18n(themePrefix("post_translator.show_original_button"))
       : i18n(themePrefix("post_translator.translate_button"));
   }
+  button.title = isTranslated ? "Show original" : "Translate";
 }
 
 /**
@@ -229,17 +231,22 @@ export default apiInitializer("1.0.0", (api) => {
 
       // Find the post-controls .actions element
       const article = element.closest("article.boxed, .topic-post");
+      console.log("[Post Translator] Article found:", article);
       if (!article) {
+        console.log("[Post Translator] No article found for post", post.id);
         return;
       }
 
       const actionsContainer = article.querySelector(".post-controls .actions");
+      console.log("[Post Translator] Actions container found:", actionsContainer);
       if (!actionsContainer) {
+        console.log("[Post Translator] No .actions container found for post", post.id);
         return;
       }
 
       // Skip if button already added
       if (actionsContainer.querySelector(".post-translate-btn")) {
+        console.log("[Post Translator] Button already exists for post", post.id);
         return;
       }
 
@@ -254,6 +261,7 @@ export default apiInitializer("1.0.0", (api) => {
 
       // Append button to .actions container
       actionsContainer.appendChild(button);
+      console.log("[Post Translator] Button added for post", post.id);
     },
     {
       id: "post-translator",
