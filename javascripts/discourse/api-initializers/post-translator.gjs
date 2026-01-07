@@ -227,19 +227,19 @@ export default apiInitializer("1.0.0", (api) => {
         return;
       }
 
-      // Find the post-controls element (traverse up to find article, then find post-controls)
+      // Find the post-controls .actions element
       const article = element.closest("article.boxed, .topic-post");
       if (!article) {
         return;
       }
 
-      const postControls = article.querySelector(".post-controls");
-      if (!postControls) {
+      const actionsContainer = article.querySelector(".post-controls .actions");
+      if (!actionsContainer) {
         return;
       }
 
       // Skip if button already added
-      if (postControls.querySelector(".post-translate-btn")) {
+      if (actionsContainer.querySelector(".post-translate-btn")) {
         return;
       }
 
@@ -252,8 +252,8 @@ export default apiInitializer("1.0.0", (api) => {
         handleTranslateClick(event, element, post.id, settings, originalHTML)
       );
 
-      // Append button to post-controls
-      postControls.appendChild(button);
+      // Append button to .actions container
+      actionsContainer.appendChild(button);
     },
     {
       id: "post-translator",
