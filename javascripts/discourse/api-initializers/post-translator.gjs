@@ -245,8 +245,8 @@ export default apiInitializer("1.0.0", (api) => {
         return;
       }
 
-      // Skip if button already added
-      if (element.parentElement?.querySelector(".post-translate-container")) {
+      // Skip if button already added (check inside the element)
+      if (element.querySelector(".post-translate-container")) {
         return;
       }
 
@@ -265,8 +265,8 @@ export default apiInitializer("1.0.0", (api) => {
 
       container.appendChild(button);
 
-      // Insert after the cooked element, not inside it
-      element.parentElement.insertBefore(container, element.nextSibling);
+      // Append to the end of the cooked element
+      element.appendChild(container);
     },
     {
       id: "post-translator",
