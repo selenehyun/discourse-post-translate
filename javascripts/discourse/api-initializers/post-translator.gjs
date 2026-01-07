@@ -39,7 +39,7 @@ async function handleTranslate(postId, settings) {
 
   // Find the cooked element for this post
   const cookedElement = document.querySelector(
-    `[data-post-id="${postId}"] .cooked, #post_${postId} .cooked`
+    `article[data-post-id="${postId}"] .cooked`
   );
 
   if (!cookedElement) {
@@ -141,12 +141,12 @@ export default apiInitializer("1.0.0", (api) => {
       console.log("[Post Translator] Found posts:", posts.length);
 
       posts.forEach((post, index) => {
-        console.log(`[Post Translator] Processing post ${index}:`, post);
-        console.log("[Post Translator] Post dataset:", post.dataset);
-        console.log("[Post Translator] Post ID attribute:", post.getAttribute("data-post-id"));
+        // Get post number (data-post-number) - post ID is in article element
+        const postNumber = post.dataset.postNumber;
+        const articleElement = post.querySelector("article[data-post-id]");
+        const postId = articleElement ? articleElement.dataset.postId : null;
 
-        const postId = post.dataset.postId || post.getAttribute("data-post-id");
-        console.log("[Post Translator] Post ID:", postId);
+        console.log(`[Post Translator] Processing post ${index}: number=${postNumber}, id=${postId}`);
 
         if (!postId) {
           console.log("[Post Translator] No post ID found, skipping");
@@ -155,17 +155,11 @@ export default apiInitializer("1.0.0", (api) => {
 
         // Skip if button already exists
         if (post.querySelector(".post-translate-btn")) {
-          console.log("[Post Translator] Button already exists for post", postId);
           return;
         }
 
         // Find the actions container
-        const postControls = post.querySelector(".post-controls");
-        console.log("[Post Translator] Post controls:", postControls);
-
         const actionsContainer = post.querySelector(".post-controls .actions");
-        console.log("[Post Translator] Actions container:", actionsContainer);
-
         if (!actionsContainer) {
           console.log("[Post Translator] No actions container for post", postId);
           return;
@@ -183,7 +177,6 @@ export default apiInitializer("1.0.0", (api) => {
 
         actionsContainer.appendChild(button);
         console.log("[Post Translator] Button added for post", postId);
-        console.log("[Post Translator] Actions container after append:", actionsContainer.innerHTML);
       });
     }, 500);
   });
