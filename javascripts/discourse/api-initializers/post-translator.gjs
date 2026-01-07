@@ -15,7 +15,7 @@ function getTargetLanguage() {
 /**
  * Call the translation API
  */
-async function translatePost(postId, targetLang, apiUrl, timeout, debugMode) {
+async function translatePost(postId, targetLang) {
   console.log("[Post Translator] Calling API (MOCKED)");
   console.log("[Post Translator] Post ID:", postId);
   console.log("[Post Translator] Target language:", targetLang);
@@ -29,90 +29,6 @@ async function translatePost(postId, targetLang, apiUrl, timeout, debugMode) {
     detectedLanguage: "en",
   };
   // === END MOCK ===
-}
-
-/**
- * Handle translation toggle
- */
-async function handleTranslate(postId, settings) {
-  console.log("[Post Translator] handleTranslate called for post:", postId);
-
-  // Find the cooked element for this post
-  const cookedElement = document.querySelector(
-    `article[data-post-id="${postId}"] .cooked`
-  );
-
-  if (!cookedElement) {
-    console.error("[Post Translator] Could not find cooked element for post", postId);
-    return;
-  }
-
-  // Find the button
-  const button = document.querySelector(`.post-translate-btn[data-post-id="${postId}"]`);
-  if (!button) {
-    console.error("[Post Translator] Could not find button for post", postId);
-    return;
-  }
-
-  // Get or initialize state
-  let state = translationState.get(postId);
-  if (!state) {
-    state = {
-      isTranslated: false,
-      originalHTML: cookedElement.innerHTML,
-      translatedHTML: null,
-    };
-    translationState.set(postId, state);
-  }
-
-  // Toggle back to original
-  if (state.isTranslated) {
-    cookedElement.innerHTML = state.originalHTML;
-    state.isTranslated = false;
-    button.querySelector(".d-button-label").textContent = i18n(themePrefix("post_translator.translate_button"));
-    button.title = "Translate";
-    return;
-  }
-
-  // Use cached translation if available
-  if (state.translatedHTML) {
-    cookedElement.innerHTML = state.translatedHTML;
-    state.isTranslated = true;
-    button.querySelector(".d-button-label").textContent = i18n(themePrefix("post_translator.show_original_button"));
-    button.title = "Show original";
-    return;
-  }
-
-  // Show loading state
-  button.disabled = true;
-  const originalLabel = button.querySelector(".d-button-label").textContent;
-  button.querySelector(".d-button-label").textContent = i18n(themePrefix("post_translator.translating"));
-
-  // Call API
-  const result = await translatePost(
-    postId,
-    getTargetLanguage(),
-    settings.translation_api_url,
-    settings.translation_api_timeout || 10000,
-    settings.debug_mode
-  );
-
-  button.disabled = false;
-
-  if (result.success) {
-    state.translatedHTML = result.translatedText;
-    cookedElement.innerHTML = state.translatedHTML;
-    state.isTranslated = true;
-    button.querySelector(".d-button-label").textContent = i18n(themePrefix("post_translator.show_original_button"));
-    button.title = "Show original";
-  } else {
-    button.querySelector(".d-button-label").textContent = i18n(themePrefix(`post_translator.${result.errorKey}`));
-    button.classList.add("btn-danger");
-    setTimeout(() => {
-      button.querySelector(".d-button-label").textContent = originalLabel;
-      button.classList.remove("btn-danger");
-    }, 3000);
-  }
 }
 
 export default apiInitializer("1.0.0", (api) => {
@@ -130,100 +46,77 @@ export default apiInitializer("1.0.0", (api) => {
 
   console.log("[Post Translator] Initializing for user:", currentUser.username);
 
-  /**
-   * Add translate button to a post if not already present
-   */
-  function addButtonToPost(post) {
-    const articleElement = post.querySelector("article[data-post-id]");
-    const postId = articleElement ? articleElement.dataset.postId : null;
+  // Add post menu button using official Discourse API
+  api.addPostMenuButton("translate", (attrs) => {
+    const postId = attrs.id;
+    const state = translationState.get(postId);
+    const isTranslated = state?.isTranslated || false;
 
-    if (!postId) return;
+    return {
+      action: "toggleTranslation",
+      icon: "globe",
+      className: "post-translate-btn",
+      title: isTranslated ? "post_translator.show_original_button" : "post_translator.translate_button",
+      label: isTranslated
+        ? themePrefix("post_translator.show_original_button")
+        : themePrefix("post_translator.translate_button"),
+      position: "first",
+    };
+  });
 
-    // Skip if button already exists
-    if (post.querySelector(".post-translate-btn")) {
+  // Register the action
+  api.attachWidgetAction("post-menu", "toggleTranslation", async function () {
+    const postId = this.attrs.id;
+    console.log("[Post Translator] toggleTranslation called for post:", postId);
+
+    // Find the cooked element
+    const cookedElement = document.querySelector(
+      `article[data-post-id="${postId}"] .cooked`
+    );
+
+    if (!cookedElement) {
+      console.error("[Post Translator] Could not find cooked element for post", postId);
       return;
     }
 
-    // Find the actions container
-    const actionsContainer = post.querySelector(".post-controls .actions");
-    if (!actionsContainer) return;
-
-    // Check current translation state
-    const state = translationState.get(parseInt(postId));
-    const isTranslated = state?.isTranslated || false;
-
-    // Create button
-    const button = document.createElement("button");
-    button.className = "btn btn-icon-text post-translate-btn btn-flat";
-    button.type = "button";
-    button.title = isTranslated ? "Show original" : "Translate";
-    button.dataset.postId = postId;
-
-    const label = isTranslated
-      ? i18n(themePrefix("post_translator.show_original_button"))
-      : i18n(themePrefix("post_translator.translate_button"));
-
-    button.innerHTML = `<svg class="fa d-icon d-icon-globe svg-icon svg-string" xmlns="http://www.w3.org/2000/svg"><use href="#globe"></use></svg><span class="d-button-label">${label}</span>`;
-
-    button.addEventListener("click", () => handleTranslate(parseInt(postId), settings));
-
-    actionsContainer.appendChild(button);
-  }
-
-  /**
-   * Scan and add buttons to all visible posts
-   */
-  function addButtonsToAllPosts() {
-    const posts = document.querySelectorAll(".topic-post");
-    posts.forEach(addButtonToPost);
-  }
-
-  // Initial scan on page change
-  api.onPageChange(() => {
-    setTimeout(addButtonsToAllPosts, 300);
-  });
-
-  // Use MutationObserver to handle re-renders from virtual scrolling
-  const observer = new MutationObserver((mutations) => {
-    let shouldScan = false;
-
-    for (const mutation of mutations) {
-      // Check if nodes were added
-      if (mutation.addedNodes.length > 0) {
-        for (const node of mutation.addedNodes) {
-          if (node.nodeType === Node.ELEMENT_NODE) {
-            // Check if it's a post or contains posts
-            if (node.classList?.contains("topic-post") || node.querySelector?.(".topic-post")) {
-              shouldScan = true;
-              break;
-            }
-          }
-        }
-      }
-      if (shouldScan) break;
+    // Get or initialize state
+    let state = translationState.get(postId);
+    if (!state) {
+      state = {
+        isTranslated: false,
+        originalHTML: cookedElement.innerHTML,
+        translatedHTML: null,
+      };
+      translationState.set(postId, state);
     }
 
-    if (shouldScan) {
-      // Debounce the scan
-      clearTimeout(observer.scanTimeout);
-      observer.scanTimeout = setTimeout(addButtonsToAllPosts, 100);
+    // Toggle back to original
+    if (state.isTranslated) {
+      cookedElement.innerHTML = state.originalHTML;
+      state.isTranslated = false;
+      this.scheduleRerender();
+      return;
     }
-  });
 
-  // Start observing the topic stream
-  const startObserving = () => {
-    const topicStream = document.querySelector(".topic-stream, .post-stream, #topic");
-    if (topicStream) {
-      observer.observe(topicStream, {
-        childList: true,
-        subtree: true,
-      });
-      console.log("[Post Translator] MutationObserver started");
+    // Use cached translation if available
+    if (state.translatedHTML) {
+      cookedElement.innerHTML = state.translatedHTML;
+      state.isTranslated = true;
+      this.scheduleRerender();
+      return;
     }
-  };
 
-  // Start observer on page change
-  api.onPageChange(() => {
-    setTimeout(startObserving, 500);
+    // Call API
+    const result = await translatePost(postId, getTargetLanguage());
+
+    if (result.success) {
+      state.translatedHTML = result.translatedText;
+      cookedElement.innerHTML = state.translatedHTML;
+      state.isTranslated = true;
+    } else {
+      console.error("[Post Translator] Translation failed");
+    }
+
+    this.scheduleRerender();
   });
 });
