@@ -1,5 +1,5 @@
 import { apiInitializer } from "discourse/lib/api";
-import { i18n } from "discourse-i18n";
+import { i18n, themePrefix } from "discourse-i18n";
 
 // State management for tracking translations per element
 const translationState = new WeakMap();
@@ -22,8 +22,8 @@ function createTranslateButton(isTranslated) {
   button.type = "button";
 
   const label = isTranslated
-    ? i18n("post_translator.show_original_button")
-    : i18n("post_translator.translate_button");
+    ? i18n(themePrefix("post_translator.show_original_button"))
+    : i18n(themePrefix("post_translator.translate_button"));
 
   button.innerHTML = `<span class="d-button-label">${label}</span>`;
 
@@ -38,7 +38,7 @@ function createLoadingIndicator() {
   loading.className = "post-translate-loading";
   loading.innerHTML = `
     <span class="spinner small"></span>
-    <span class="loading-text">${i18n("post_translator.translating")}</span>
+    <span class="loading-text">${i18n(themePrefix("post_translator.translating"))}</span>
   `;
   return loading;
 }
@@ -54,7 +54,7 @@ function showError(container, errorKey) {
 
   const error = document.createElement("div");
   error.className = "post-translate-error";
-  error.textContent = i18n(`post_translator.${errorKey}`);
+  error.textContent = i18n(themePrefix(`post_translator.${errorKey}`));
 
   container.appendChild(error);
 
@@ -73,8 +73,8 @@ function updateButtonLabel(button, isTranslated) {
   const label = button.querySelector(".d-button-label");
   if (label) {
     label.textContent = isTranslated
-      ? i18n("post_translator.show_original_button")
-      : i18n("post_translator.translate_button");
+      ? i18n(themePrefix("post_translator.show_original_button"))
+      : i18n(themePrefix("post_translator.translate_button"));
   }
 }
 
