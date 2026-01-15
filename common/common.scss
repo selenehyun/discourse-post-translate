@@ -1,9 +1,14 @@
 // Post Translator Theme Component Styles
 
+// Dropdown container
+.post-translate-dropdown {
+  position: relative;
+  display: inline-block;
+  margin-left: 0.5em;
+}
+
 // Translation button in post-controls
 .post-translate-btn {
-  margin-left: 0.5em;
-
   &:hover {
     background-color: var(--primary-low);
   }
@@ -17,5 +22,59 @@
     display: inline-flex;
     align-items: center;
     gap: 0.3em;
+  }
+
+  .dropdown-caret {
+    margin-left: 0.25em;
+    font-size: 0.75em;
+    opacity: 0.7;
+  }
+}
+
+// Dropdown menu
+.post-translate-menu {
+  display: none;
+  position: absolute;
+  bottom: 100%;
+  left: 0;
+  min-width: 120px;
+  background-color: var(--secondary);
+  border: 1px solid var(--primary-low);
+  border-radius: 4px;
+  box-shadow: 0 2px 8px rgba(0, 0, 0, 0.15);
+  z-index: 1000;
+  margin-bottom: 4px;
+
+  .post-translate-dropdown.is-open & {
+    display: block;
+  }
+}
+
+// Menu items
+.post-translate-menu-item {
+  display: block;
+  width: 100%;
+  padding: 8px 12px;
+  text-align: left;
+  background: none;
+  border: none;
+  color: var(--primary);
+  cursor: pointer;
+  font-size: var(--font-down-1);
+
+  &:hover {
+    background-color: var(--primary-low);
+  }
+
+  &:first-child {
+    border-radius: 4px 4px 0 0;
+  }
+
+  &:last-child {
+    border-radius: 0 0 4px 4px;
+  }
+
+  &:not(:last-child) {
+    border-bottom: 1px solid var(--primary-low);
   }
 }

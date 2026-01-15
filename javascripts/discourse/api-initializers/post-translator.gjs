@@ -6,13 +6,12 @@ const translationState = new Map();
 // Track which posts have buttons to avoid duplicates
 const buttonsAdded = new Set();
 
-/**
- * Get the target language from browser settings
- */
-function getTargetLanguage() {
-  const browserLang = navigator.language || navigator.userLanguage;
-  return browserLang.split("-")[0];
-}
+// Supported target languages
+const SUPPORTED_LANGUAGES = [
+  { code: "en", label: "English" },
+  { code: "ko", label: "한국어" },
+  { code: "zh", label: "中文" },
+];
 
 /**
  * Call the translation API
@@ -130,10 +129,10 @@ function getOrCreateTranslationContainer(postId) {
 }
 
 /**
- * Handle translation toggle
+ * Handle translation for a specific language
  */
-async function handleTranslate(postId, button) {
-  console.log("[Post Translator] handleTranslate called for post:", postId);
+async function handleTranslate(postId, targetLang, buttonContainer) {
+  console.log("[Post Translator] handleTranslate called for post:", postId, "lang:", targetLang);
 
   const elements = getOrCreateTranslationContainer(postId);
   if (!elements) {
@@ -148,14 +147,16 @@ async function handleTranslate(postId, button) {
     state = {
       isTranslated: false,
       translatedHTML: null,
+      translatedLang: null,
     };
     translationState.set(postId, state);
   }
 
-  const labelSpan = button.querySelector(".d-button-label");
+  const mainButton = buttonContainer.querySelector(".post-translate-btn");
+  const labelSpan = mainButton?.querySelector(".d-button-label");
 
-  // Toggle back to original
-  if (state.isTranslated) {
+  // If already showing translation in same language, toggle back to original
+  if (state.isTranslated && state.translatedLang === targetLang) {
     cookedElement.style.display = "";
     container.style.display = "none";
     state.isTranslated = false;
@@ -165,8 +166,8 @@ async function handleTranslate(postId, button) {
     return;
   }
 
-  // Use cached translation if available
-  if (state.translatedHTML) {
+  // Use cached translation if available for the same language
+  if (state.translatedHTML && state.translatedLang === targetLang) {
     container.innerHTML = state.translatedHTML;
     cookedElement.style.display = "none";
     container.style.display = "";
@@ -178,18 +179,19 @@ async function handleTranslate(postId, button) {
   }
 
   // Show loading state
-  button.disabled = true;
+  if (mainButton) mainButton.disabled = true;
   if (labelSpan) {
     labelSpan.textContent = i18n(themePrefix("post_translator.translating"));
   }
 
-  // Call API
-  const result = await translatePost(postId, getTargetLanguage());
+  // Call API with selected language
+  const result = await translatePost(postId, targetLang);
 
-  button.disabled = false;
+  if (mainButton) mainButton.disabled = false;
 
   if (result.success) {
     state.translatedHTML = result.translatedText;
+    state.translatedLang = targetLang;
     container.innerHTML = state.translatedHTML;
     cookedElement.style.display = "none";
     container.style.display = "";
@@ -219,6 +221,37 @@ async function handleTranslate(postId, button) {
 }
 
 /**
+ * Toggle dropdown menu visibility
+ */
+function toggleDropdown(dropdown) {
+  const isOpen = dropdown.classList.contains("is-open");
+  // Close all other dropdowns first
+  document.querySelectorAll(".post-translate-dropdown.is-open").forEach((d) => {
+    d.classList.remove("is-open");
+  });
+  if (!isOpen) {
+    dropdown.classList.add("is-open");
+  }
+}
+
+/**
+ * Close all dropdowns when clicking outside
+ */
+let dropdownHandlerSetup = false;
+function setupDropdownCloseHandler() {
+  if (dropdownHandlerSetup) return;
+  dropdownHandlerSetup = true;
+
+  document.addEventListener("click", (e) => {
+    if (!e.target.closest(".post-translate-dropdown")) {
+      document.querySelectorAll(".post-translate-dropdown.is-open").forEach((d) => {
+        d.classList.remove("is-open");
+      });
+    }
+  });
+}
+
+/**
  * Restore translation view if post was showing translation
  */
 function restoreTranslationView(postId) {
@@ -235,7 +268,7 @@ function restoreTranslationView(postId) {
 }
 
 /**
- * Add translate button to a single post
+ * Add translate button with language dropdown to a single post
  */
 function addButtonToPost(post) {
   const articleElement = post.querySelector("article[data-post-id]");
@@ -248,8 +281,8 @@ function addButtonToPost(post) {
   const actionsContainer = post.querySelector(".post-controls .actions");
   if (!actionsContainer) return;
 
-  // Check if button already exists in DOM
-  if (actionsContainer.querySelector(".post-translate-btn")) {
+  // Check if dropdown already exists in DOM
+  if (actionsContainer.querySelector(".post-translate-dropdown")) {
     // Button exists but need to check if translation view needs restoration
     restoreTranslationView(numericPostId);
     return;
@@ -263,20 +296,56 @@ function addButtonToPost(post) {
     ? i18n(themePrefix("post_translator.show_original_button"))
     : i18n(themePrefix("post_translator.translate_button"));
 
-  // Create button
-  const button = document.createElement("button");
-  button.className = "btn btn-icon-text post-translate-btn btn-flat";
-  button.type = "button";
-  button.title = label;
-  button.innerHTML = `<svg class="fa d-icon d-icon-globe svg-icon svg-string" xmlns="http://www.w3.org/2000/svg"><use href="#globe"></use></svg><span class="d-button-label">${label}</span>`;
+  // Create dropdown container
+  const dropdown = document.createElement("div");
+  dropdown.className = "post-translate-dropdown";
 
-  button.addEventListener("click", (e) => {
-    e.preventDefault();
-    e.stopPropagation();
-    handleTranslate(numericPostId, button);
+  // Create main button
+  const mainButton = document.createElement("button");
+  mainButton.className = "btn btn-icon-text post-translate-btn btn-flat";
+  mainButton.type = "button";
+  mainButton.title = label;
+  mainButton.innerHTML = `<svg class="fa d-icon d-icon-globe svg-icon svg-string" xmlns="http://www.w3.org/2000/svg"><use href="#globe"></use></svg><span class="d-button-label">${label}</span><svg class="fa d-icon d-icon-caret-down svg-icon svg-string dropdown-caret" xmlns="http://www.w3.org/2000/svg"><use href="#caret-down"></use></svg>`;
+
+  // Create dropdown menu
+  const menu = document.createElement("div");
+  menu.className = "post-translate-menu";
+
+  // Add language options
+  SUPPORTED_LANGUAGES.forEach((lang) => {
+    const option = document.createElement("button");
+    option.className = "post-translate-menu-item";
+    option.type = "button";
+    option.textContent = lang.label;
+    option.dataset.lang = lang.code;
+
+    option.addEventListener("click", (e) => {
+      e.preventDefault();
+      e.stopPropagation();
+      dropdown.classList.remove("is-open");
+      handleTranslate(numericPostId, lang.code, dropdown);
+    });
+
+    menu.appendChild(option);
   });
 
-  actionsContainer.appendChild(button);
+  // Toggle dropdown on main button click
+  mainButton.addEventListener("click", (e) => {
+    e.preventDefault();
+    e.stopPropagation();
+
+    // If currently showing translation, clicking toggles back to original
+    const currentState = translationState.get(numericPostId);
+    if (currentState?.isTranslated) {
+      handleTranslate(numericPostId, currentState.translatedLang, dropdown);
+    } else {
+      toggleDropdown(dropdown);
+    }
+  });
+
+  dropdown.appendChild(mainButton);
+  dropdown.appendChild(menu);
+  actionsContainer.appendChild(dropdown);
 
   // Restore translation view if this post was showing translation before re-render
   restoreTranslationView(numericPostId);
@@ -304,6 +373,9 @@ export default apiInitializer("1.0.0", (api) => {
   }
 
   console.log("[Post Translator] Initializing for user:", currentUser.username);
+
+  // Setup global dropdown close handler (only once)
+  setupDropdownCloseHandler();
 
   let observer = null;
   let scanTimeout = null;
