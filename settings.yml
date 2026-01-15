@@ -14,7 +14,7 @@ translation_api_key:
 
 translation_api_timeout:
   type: integer
-  default: 10000
+  default: 150000
   description:
     en: "API request timeout in milliseconds"
     ko: "API 요청 타임아웃 (밀리초)"
