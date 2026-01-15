@@ -5,6 +5,13 @@ translation_api_url:
     en: "URL of the translation API endpoint"
     ko: "번역 API 엔드포인트 URL"
 
+translation_api_key:
+  type: string
+  default: ""
+  description:
+    en: "API key for translation service (X-API-Key header)"
+    ko: "번역 서비스 API 키 (X-API-Key 헤더)"
+
 translation_api_timeout:
   type: integer
   default: 10000

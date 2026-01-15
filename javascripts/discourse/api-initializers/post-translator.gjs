@@ -18,19 +18,92 @@ function getTargetLanguage() {
  * Call the translation API
  */
 async function translatePost(postId, targetLang) {
-  console.log("[Post Translator] Calling API (MOCKED)");
-  console.log("[Post Translator] Post ID:", postId);
-  console.log("[Post Translator] Target language:", targetLang);
+  if (settings.debug_mode) {
+    console.log("[Post Translator] Calling API");
+    console.log("[Post Translator] Post ID:", postId);
+    console.log("[Post Translator] Target language:", targetLang);
+    console.log("[Post Translator] API URL:", settings.translation_api_url);
+  }
 
-  // === MOCK RESPONSE FOR TESTING ===
-  await new Promise((resolve) => setTimeout(resolve, 500));
+  // Get original HTML content from the post
+  const article = document.querySelector(`article[data-post-id="${postId}"]`);
+  const cookedElement = article?.querySelector(".cooked");
+  const originalHTML = cookedElement?.innerHTML;
 
-  return {
-    success: true,
-    translatedText: `<p><strong>[번역됨 - Post ID: ${postId}]</strong></p><p>이것은 테스트용 번역 결과입니다. 원본 내용이 이 텍스트로 대체되어야 합니다.</p><p>Target language: ${targetLang}</p>`,
-    detectedLanguage: "en",
-  };
-  // === END MOCK ===
+  if (!originalHTML) {
+    console.error("[Post Translator] Could not find content for post", postId);
+    return { success: false, error: "Content not found" };
+  }
+
+  if (settings.debug_mode) {
+    console.log("[Post Translator] Content length:", originalHTML.length);
+  }
+
+  // Setup timeout with AbortController
+  const controller = new AbortController();
+  const timeoutId = setTimeout(
+    () => controller.abort(),
+    settings.translation_api_timeout
+  );
+
+  try {
+    const headers = {
+      "Content-Type": "application/json",
+    };
+
+    // Add API key if configured
+    if (settings.translation_api_key) {
+      headers["X-API-Key"] = settings.translation_api_key;
+    }
+
+    const response = await fetch(settings.translation_api_url, {
+      method: "POST",
+      headers,
+      body: JSON.stringify({
+        content: originalHTML,
+        sourceLang: "auto",
+        targetLang: targetLang,
+        format: "html",
+        mode: "fast",
+      }),
+      signal: controller.signal,
+    });
+
+    clearTimeout(timeoutId);
+
+    const data = await response.json();
+
+    if (settings.debug_mode) {
+      console.log("[Post Translator] API Response status:", response.status);
+      console.log("[Post Translator] API Response data:", data);
+    }
+
+    if (!response.ok) {
+      console.error("[Post Translator] API Error:", data.error, data.code);
+      return {
+        success: false,
+        error: data.error || "Translation failed",
+        code: data.code,
+      };
+    }
+
+    return {
+      success: true,
+      translatedText: data.translated,
+      quality: data.quality,
+      provider: data.provider,
+    };
+  } catch (error) {
+    clearTimeout(timeoutId);
+
+    if (error.name === "AbortError") {
+      console.error("[Post Translator] Request timeout");
+      return { success: false, error: "Request timeout" };
+    }
+
+    console.error("[Post Translator] Network error:", error);
+    return { success: false, error: error.message || "Network error" };
+  }
 }
 
 /**
@@ -125,8 +198,22 @@ async function handleTranslate(postId, button) {
       labelSpan.textContent = i18n(themePrefix("post_translator.show_original_button"));
     }
   } else {
+    // Determine appropriate error message based on error type
+    let errorMessage;
+    if (result.error === "Request timeout") {
+      errorMessage = i18n(themePrefix("post_translator.error_timeout"));
+    } else if (result.error === "Network error" || result.error?.includes("fetch")) {
+      errorMessage = i18n(themePrefix("post_translator.error_network"));
+    } else {
+      errorMessage = i18n(themePrefix("post_translator.error_generic"));
+    }
+
+    // Show error message briefly in button, then restore
     if (labelSpan) {
-      labelSpan.textContent = i18n(themePrefix("post_translator.translate_button"));
+      labelSpan.textContent = errorMessage;
+      setTimeout(() => {
+        labelSpan.textContent = i18n(themePrefix("post_translator.translate_button"));
+      }, 3000);
     }
   }
 }

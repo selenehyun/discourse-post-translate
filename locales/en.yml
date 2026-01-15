@@ -10,6 +10,7 @@ en:
   theme_metadata:
     settings:
       translation_api_url: "URL of the translation API endpoint"
+      translation_api_key: "API key for translation service (X-API-Key header)"
       translation_api_timeout: "API request timeout in milliseconds"
       show_translation_button: "Show translation button on posts"
       debug_mode: "Enable debug logging to console"
