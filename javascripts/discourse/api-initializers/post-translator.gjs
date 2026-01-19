@@ -338,6 +338,7 @@ function setupStickyHeaderObserver() {
 
 /**
  * Get or create translation container for a post
+ * Returns article reference for CSS class-based visibility control
  */
 function getOrCreateTranslationContainer(postId) {
   const article = document.querySelector(`article[data-post-id="${postId}"]`);
@@ -352,40 +353,42 @@ function getOrCreateTranslationContainer(postId) {
     // Create container as sibling of cooked
     container = document.createElement("div");
     container.className = "post-translator-content cooked";
-    container.style.display = "none";
+    // Note: display is controlled via CSS (.is-translated class on article)
     cookedElement.parentNode.insertBefore(container, cookedElement.nextSibling);
   }
 
-  return { cookedElement, container };
+  return { cookedElement, container, article };
 }
 
 /**
  * Apply translation to DOM if the post is currently rendered
  * Returns true if applied, false if post not in DOM
+ * Uses CSS class for visibility control to avoid Glimmer DOM conflicts
  */
 function applyTranslationToDOM(postId, translatedHTML) {
   const elements = getOrCreateTranslationContainer(postId);
   if (!elements) return false; // Post not in DOM (will be applied when scrolled into view)
 
-  const { cookedElement, container } = elements;
+  const { container, article } = elements;
   container.innerHTML = translatedHTML;
-  cookedElement.style.display = "none";
-  container.style.display = "";
+
+  // Use CSS class for visibility control (no inline style modifications)
+  article.classList.add("is-translated");
+
   return true;
 }
 
 /**
  * Show original content in DOM for a post
+ * Uses CSS class removal for visibility control to avoid Glimmer DOM conflicts
  */
 function showOriginalInDOM(postId) {
   const article = document.querySelector(`article[data-post-id="${postId}"]`);
   if (!article) return false;
 
-  const cookedElement = article.querySelector(".cooked");
-  const container = article.querySelector(".post-translator-content");
+  // Remove CSS class to show original content (no inline style modifications)
+  article.classList.remove("is-translated");
 
-  if (cookedElement) cookedElement.style.display = "";
-  if (container) container.style.display = "none";
   return true;
 }
 
@@ -733,7 +736,7 @@ class TranslateAllButton extends Component {
   }
 }
 
-export default apiInitializer("1.3.0", (api) => {
+export default apiInitializer("1.4.0", (api) => {
   // Check if feature is enabled
   if (!settings.show_translation_button) {
     return;
@@ -760,6 +763,17 @@ export default apiInitializer("1.3.0", (api) => {
 
   // Reset global state on page change
   api.onPageChange(() => {
+    // === CSS class cleanup (before Glimmer teardown) ===
+    // Remove .is-translated class from all articles to prevent DOM conflicts
+    document.querySelectorAll("article.is-translated").forEach((article) => {
+      article.classList.remove("is-translated");
+    });
+
+    // Remove translation containers (clean DOM before Glimmer teardown)
+    document.querySelectorAll(".post-translator-content").forEach((el) => {
+      el.remove();
+    });
+
     // Cleanup previous observers
     if (translationObserver) {
       translationObserver.disconnect();

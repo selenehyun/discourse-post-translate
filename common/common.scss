@@ -1,5 +1,27 @@
 // Post Translator Theme Component Styles
 
+// === Translation visibility control via CSS class ===
+// When article has .is-translated class:
+// - Hide original .cooked content
+// - Show .post-translator-content
+// Using CSS classes instead of inline styles avoids Glimmer DOM conflicts
+
+article.is-translated {
+  > .row > .topic-body > .regular > .cooked,
+  .cooked {
+    display: none !important;
+  }
+
+  .post-translator-content {
+    display: block !important;
+  }
+}
+
+// Default: translation container is hidden
+.post-translator-content {
+  display: none;
+}
+
 // Topic-level translate all container
 .translate-all-container {
   display: flex;
