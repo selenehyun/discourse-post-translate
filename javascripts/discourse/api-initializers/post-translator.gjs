@@ -761,7 +761,7 @@ class TranslateAllButton extends Component {
     <div class="translate-all-container">
       <div class="post-translate-dropdown {{if this.showDropdown 'is-open'}}">
         <button
-          class="btn btn-flat post-translate-btn"
+          class="btn post-translate-btn"
           type="button"
           disabled={{this.isTranslating}}
           {{on "click" this.handleButtonClick}}

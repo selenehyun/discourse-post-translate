@@ -1,5 +1,5 @@
 // Post Translator Theme Component Styles
-// v1.5.0: Uses innerHTML replacement approach (no sibling containers)
+// v1.6.0: Model-based approach with improved button visibility
 
 // Topic-level translate all container
 .translate-all-container {
@@ -23,27 +23,64 @@
   margin-left: 0.5em;
 }
 
-// Translation button in post-controls
+// Translation button - prominent style
 .post-translate-btn {
+  background-color: var(--tertiary);
+  color: var(--secondary);
+  border: none;
+  border-radius: 6px;
+  padding: 0.5em 1em;
+  font-weight: 500;
+  transition: all 0.2s ease;
+  box-shadow: 0 2px 4px rgba(0, 0, 0, 0.1);
+
+  .d-icon {
+    color: var(--secondary);
+    opacity: 0.9;
+  }
+
   &:hover {
-    background-color: var(--primary-low);
+    background-color: var(--tertiary-hover, var(--tertiary));
+    filter: brightness(1.1);
+    box-shadow: 0 3px 8px rgba(0, 0, 0, 0.15);
+    transform: translateY(-1px);
+  }
+
+  &:active {
+    transform: translateY(0);
+    box-shadow: 0 1px 2px rgba(0, 0, 0, 0.1);
   }
 
   &:disabled {
-    opacity: 0.6;
+    opacity: 0.7;
     cursor: not-allowed;
+    transform: none;
+    filter: none;
+
+    // Translating state - pulsing animation
+    animation: pulse-translate 1.5s ease-in-out infinite;
   }
 
   .d-button-label {
     display: inline-flex;
     align-items: center;
-    gap: 0.3em;
+    gap: 0.4em;
   }
 
   .dropdown-caret {
-    margin-left: 0.25em;
+    margin-left: 0.3em;
     font-size: 0.75em;
+    opacity: 0.8;
+  }
+}
+
+// Pulsing animation for translating state
+@keyframes pulse-translate {
+  0%, 100% {
     opacity: 0.7;
+  }
+  50% {
+    opacity: 1;
   }
 }
 
@@ -52,55 +89,64 @@
   display: none;
   position: absolute;
   left: 0;
-  min-width: 120px;
+  min-width: 140px;
   background-color: var(--secondary);
   border: 1px solid var(--primary-low);
-  border-radius: 4px;
-  box-shadow: 0 2px 8px rgba(0, 0, 0, 0.15);
+  border-radius: 8px;
+  box-shadow: 0 4px 16px rgba(0, 0, 0, 0.12);
   z-index: 1000;
+  overflow: hidden;
 
   // Default: dropdown opens above (for post-level buttons)
   bottom: 100%;
-  margin-bottom: 4px;
+  margin-bottom: 6px;
 
   // In translate-all container: dropdown opens below
   .translate-all-container & {
     bottom: auto;
     top: 100%;
     margin-bottom: 0;
-    margin-top: 4px;
+    margin-top: 6px;
   }
 
   .post-translate-dropdown.is-open & {
     display: block;
+    animation: dropdown-fade-in 0.15s ease-out;
+  }
+}
+
+// Dropdown animation
+@keyframes dropdown-fade-in {
+  from {
+    opacity: 0;
+    transform: translateY(-4px);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0);
   }
 }
 
 // Menu items
 .post-translate-menu-item {
-  display: block;
+  display: flex;
+  align-items: center;
   width: 100%;
-  padding: 8px 12px;
+  padding: 10px 14px;
   text-align: left;
   background: none;
   border: none;
   color: var(--primary);
   cursor: pointer;
-  font-size: var(--font-down-1);
+  font-size: 0.95em;
+  transition: background-color 0.15s ease;
 
   &:hover {
-    background-color: var(--primary-low);
-  }
-
-  &:first-child {
-    border-radius: 4px 4px 0 0;
-  }
-
-  &:last-child {
-    border-radius: 0 0 4px 4px;
+    background-color: var(--tertiary-low, var(--primary-very-low));
+    color: var(--tertiary);
   }
 
   &:not(:last-child) {
-    border-bottom: 1px solid var(--primary-low);
+    border-bottom: 1px solid var(--primary-very-low);
   }
 }
