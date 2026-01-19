@@ -28,6 +28,9 @@ const SUPPORTED_LANGUAGES = [
 // Reference to the component instance for state updates
 let componentInstance = null;
 
+// API reference for container.lookup access (needed for postStream)
+let apiReference = null;
+
 /**
  * Call the translation API for a single post
  */
@@ -39,10 +42,24 @@ async function translatePost(postId, targetLang) {
     console.log("[Post Translator] API URL:", settings.translation_api_url);
   }
 
-  // Get original HTML content from the post
-  const article = document.querySelector(`article[data-post-id="${postId}"]`);
-  const cookedElement = article?.querySelector(".cooked");
-  const originalHTML = cookedElement?.innerHTML;
+  // 1. Try to get HTML from postStream.posts first (works for virtual scrolling)
+  const topicController = apiReference?.container?.lookup("controller:topic");
+  const posts = topicController?.model?.postStream?.posts || [];
+  const postModel = posts.find((p) => p.id === postId);
+  let originalHTML = postModel?.cooked;
+
+  if (settings.debug_mode && postModel) {
+    console.log("[Post Translator] Found post in postStream model");
+  }
+
+  // 2. Fallback to DOM if not in model (for rendered posts)
+  if (!originalHTML) {
+    const article = document.querySelector(`article[data-post-id="${postId}"]`);
+    originalHTML = article?.querySelector(".cooked")?.innerHTML;
+    if (settings.debug_mode && originalHTML) {
+      console.log("[Post Translator] Found post in DOM (fallback)");
+    }
+  }
 
   if (!originalHTML) {
     console.error("[Post Translator] Could not find content for post", postId);
@@ -147,17 +164,39 @@ function getOrCreateTranslationContainer(postId) {
 }
 
 /**
+ * Apply translation to DOM if the post is currently rendered
+ * Returns true if applied, false if post not in DOM
+ */
+function applyTranslationToDOM(postId, translatedHTML) {
+  const elements = getOrCreateTranslationContainer(postId);
+  if (!elements) return false; // Post not in DOM (will be applied when scrolled into view)
+
+  const { cookedElement, container } = elements;
+  container.innerHTML = translatedHTML;
+  cookedElement.style.display = "none";
+  container.style.display = "";
+  return true;
+}
+
+/**
+ * Show original content in DOM for a post
+ */
+function showOriginalInDOM(postId) {
+  const article = document.querySelector(`article[data-post-id="${postId}"]`);
+  if (!article) return false;
+
+  const cookedElement = article.querySelector(".cooked");
+  const container = article.querySelector(".post-translator-content");
+
+  if (cookedElement) cookedElement.style.display = "";
+  if (container) container.style.display = "none";
+  return true;
+}
+
+/**
  * Translate a single post and update its DOM
  */
 async function translateSinglePost(postId, targetLang) {
-  const elements = getOrCreateTranslationContainer(postId);
-  if (!elements) {
-    console.error("[Post Translator] Could not find elements for post", postId);
-    return false;
-  }
-
-  const { cookedElement, container } = elements;
-
   let state = translationState.get(postId);
   if (!state) {
     state = {
@@ -170,10 +209,8 @@ async function translateSinglePost(postId, targetLang) {
 
   // Use cached translation if available for the same language
   if (state.translatedHTML && state.translatedLang === targetLang) {
-    container.innerHTML = state.translatedHTML;
-    cookedElement.style.display = "none";
-    container.style.display = "";
     state.isTranslated = true;
+    applyTranslationToDOM(postId, state.translatedHTML);
     return true;
   }
 
@@ -183,10 +220,8 @@ async function translateSinglePost(postId, targetLang) {
   if (result.success) {
     state.translatedHTML = result.translatedText;
     state.translatedLang = targetLang;
-    container.innerHTML = state.translatedHTML;
-    cookedElement.style.display = "none";
-    container.style.display = "";
     state.isTranslated = true;
+    applyTranslationToDOM(postId, state.translatedHTML);
     return true;
   }
 
@@ -194,45 +229,55 @@ async function translateSinglePost(postId, targetLang) {
 }
 
 /**
- * Show original content for a single post
+ * Show original content for a single post (updates state and DOM if present)
  */
 function showOriginalPost(postId) {
-  const article = document.querySelector(`article[data-post-id="${postId}"]`);
-  if (!article) return;
-
-  const cookedElement = article.querySelector(".cooked");
-  const container = article.querySelector(".post-translator-content");
-
-  if (cookedElement) cookedElement.style.display = "";
-  if (container) container.style.display = "none";
-
   const state = translationState.get(postId);
   if (state) state.isTranslated = false;
+  showOriginalInDOM(postId);
 }
 
 /**
- * Show original content for all posts
+ * Show original content for all posts (both cached and DOM)
  */
 function showAllOriginal() {
-  const posts = document.querySelectorAll(".topic-post article[data-post-id]");
-  posts.forEach((article) => {
-    const postId = parseInt(article.dataset.postId);
-    showOriginalPost(postId);
+  // Update all cached translation states
+  translationState.forEach((state, postId) => {
+    state.isTranslated = false;
+    // Apply to DOM if post is currently rendered
+    showOriginalInDOM(postId);
   });
+
   globalState.allTranslated = false;
   globalState.currentLang = null;
 }
 
 /**
  * Translate all posts sequentially (one at a time)
+ * Uses postStream.stream to get all post IDs (not just DOM-rendered ones)
  */
 async function translateAllPostsSequentially(targetLang, updateCallback) {
-  const postElements = document.querySelectorAll(".topic-post article[data-post-id]");
-  const total = postElements.length;
+  // Get all post IDs from postStream (handles virtual scrolling)
+  const topicController = apiReference?.container?.lookup("controller:topic");
+  const postStream = topicController?.model?.postStream;
+
+  if (!postStream) {
+    console.log("[Post Translator] PostStream not found");
+    return false;
+  }
+
+  // stream contains all post IDs in the topic
+  const allPostIds = postStream.stream || [];
+  const total = allPostIds.length;
 
   if (total === 0) {
     console.log("[Post Translator] No posts found to translate");
     return false;
+  }
+
+  if (settings.debug_mode) {
+    console.log(`[Post Translator] Found ${total} posts in postStream`);
+    console.log(`[Post Translator] Loaded posts: ${postStream.posts?.length || 0}`);
   }
 
   globalState.isTranslating = true;
@@ -244,6 +289,7 @@ async function translateAllPostsSequentially(targetLang, updateCallback) {
   }
 
   let successCount = 0;
+  let skippedCount = 0;
 
   // Sequential translation using for loop with await
   for (let i = 0; i < total; i++) {
@@ -253,8 +299,7 @@ async function translateAllPostsSequentially(targetLang, updateCallback) {
       break;
     }
 
-    const article = postElements[i];
-    const postId = parseInt(article.dataset.postId);
+    const postId = allPostIds[i];
 
     globalState.progress.current = i + 1;
     if (updateCallback) updateCallback();
@@ -264,7 +309,14 @@ async function translateAllPostsSequentially(targetLang, updateCallback) {
     }
 
     const success = await translateSinglePost(postId, targetLang);
-    if (success) successCount++;
+    if (success) {
+      successCount++;
+    } else {
+      skippedCount++;
+      if (settings.debug_mode) {
+        console.log(`[Post Translator] Skipped post ${postId} (content not available)`);
+      }
+    }
   }
 
   globalState.isTranslating = false;
@@ -272,7 +324,7 @@ async function translateAllPostsSequentially(targetLang, updateCallback) {
   globalState.currentLang = targetLang;
 
   if (settings.debug_mode) {
-    console.log(`[Post Translator] Translation complete. ${successCount}/${total} posts translated.`);
+    console.log(`[Post Translator] Translation complete. ${successCount}/${total} posts translated, ${skippedCount} skipped.`);
   }
 
   if (updateCallback) updateCallback();
@@ -294,6 +346,52 @@ function setupDropdownCloseHandler() {
       });
     }
   });
+}
+
+/**
+ * Setup MutationObserver to apply cached translations when posts are rendered
+ * This handles virtual scrolling - when user scrolls, new posts appear in DOM
+ */
+function setupTranslationObserver() {
+  const container = document.querySelector("#main-outlet, .topic-area");
+  if (!container) return null;
+
+  const observer = new MutationObserver((mutations) => {
+    // Only apply if translation is active
+    if (!globalState.allTranslated) return;
+
+    for (const mutation of mutations) {
+      mutation.addedNodes.forEach((node) => {
+        if (node.nodeType !== 1) return; // Not an element
+
+        // Find newly rendered posts
+        const articles = node.matches?.("article[data-post-id]")
+          ? [node]
+          : node.querySelectorAll?.("article[data-post-id]") || [];
+
+        articles.forEach((article) => {
+          const postId = parseInt(article.dataset.postId);
+          const state = translationState.get(postId);
+
+          // Apply cached translation if this post was translated
+          if (state?.isTranslated && state?.translatedHTML) {
+            if (settings.debug_mode) {
+              console.log(`[Post Translator] Applying cached translation to post ${postId} (virtual scroll)`);
+            }
+            applyTranslationToDOM(postId, state.translatedHTML);
+          }
+        });
+      });
+    }
+  });
+
+  observer.observe(container, { childList: true, subtree: true });
+
+  if (settings.debug_mode) {
+    console.log("[Post Translator] Translation observer setup complete");
+  }
+
+  return observer;
 }
 
 /**
@@ -412,7 +510,7 @@ class TranslateAllButton extends Component {
   }
 }
 
-export default apiInitializer("1.1.0", (api) => {
+export default apiInitializer("1.2.0", (api) => {
   // Check if feature is enabled
   if (!settings.show_translation_button) {
     return;
@@ -427,21 +525,41 @@ export default apiInitializer("1.1.0", (api) => {
 
   console.log("[Post Translator] Initializing for user:", currentUser.username);
 
+  // Store API reference for postStream access
+  apiReference = api;
+
   // Setup global dropdown close handler
   setupDropdownCloseHandler();
 
+  // Track translation observer for cleanup
+  let translationObserver = null;
+
   // Reset global state on page change
   api.onPageChange(() => {
+    // Cleanup previous observer
+    if (translationObserver) {
+      translationObserver.disconnect();
+      translationObserver = null;
+    }
+
     // Reset translation state for new topic
     globalState.isTranslating = false;
     globalState.allTranslated = false;
     globalState.currentLang = null;
     globalState.progress = { current: 0, total: 0 };
 
+    // Clear translation cache for new topic
+    translationState.clear();
+
     // Update component if it exists
     if (componentInstance) {
       componentInstance.syncFromGlobalState();
     }
+
+    // Setup new observer after a short delay (wait for topic to render)
+    setTimeout(() => {
+      translationObserver = setupTranslationObserver();
+    }, 500);
   });
 
   // Render the Translate All button at the top of the topic
