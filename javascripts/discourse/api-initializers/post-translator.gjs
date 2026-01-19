@@ -357,8 +357,8 @@ function setupTranslationObserver() {
   if (!container) return null;
 
   const observer = new MutationObserver((mutations) => {
-    // Only apply if translation is active
-    if (!globalState.allTranslated) return;
+    // Apply cached translations during translation OR after completion
+    if (!globalState.isTranslating && !globalState.allTranslated) return;
 
     for (const mutation of mutations) {
       mutation.addedNodes.forEach((node) => {
