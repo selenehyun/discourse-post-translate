@@ -337,57 +337,44 @@ function setupStickyHeaderObserver() {
 }
 
 /**
- * Get or create translation container for a post
- * Returns article reference for CSS class-based visibility control
- */
-function getOrCreateTranslationContainer(postId) {
-  const article = document.querySelector(`article[data-post-id="${postId}"]`);
-  if (!article) return null;
-
-  const cookedElement = article.querySelector(".cooked");
-  if (!cookedElement) return null;
-
-  // Check if translation container already exists
-  let container = article.querySelector(".post-translator-content");
-  if (!container) {
-    // Create container as sibling of cooked
-    container = document.createElement("div");
-    container.className = "post-translator-content cooked";
-    // Note: display is controlled via CSS (.is-translated class on article)
-    cookedElement.parentNode.insertBefore(container, cookedElement.nextSibling);
-  }
-
-  return { cookedElement, container, article };
-}
-
-/**
  * Apply translation to DOM if the post is currently rendered
  * Returns true if applied, false if post not in DOM
- * Uses CSS class for visibility control to avoid Glimmer DOM conflicts
+ * Uses innerHTML replacement (no sibling nodes) to avoid Glimmer DOM conflicts
  */
 function applyTranslationToDOM(postId, translatedHTML) {
-  const elements = getOrCreateTranslationContainer(postId);
-  if (!elements) return false; // Post not in DOM (will be applied when scrolled into view)
+  const article = document.querySelector(`article[data-post-id="${postId}"]`);
+  if (!article) return false; // Post not in DOM (will be applied when scrolled into view)
 
-  const { container, article } = elements;
-  container.innerHTML = translatedHTML;
+  const cookedElement = article.querySelector(".cooked");
+  if (!cookedElement) return false;
 
-  // Use CSS class for visibility control (no inline style modifications)
-  article.classList.add("is-translated");
+  // Cache original HTML on first access (before any translation)
+  let state = translationState.get(postId);
+  if (state && !state.originalHTML) {
+    state.originalHTML = cookedElement.innerHTML;
+  }
+
+  // Replace innerHTML directly (Glimmer doesn't track innerHTML)
+  cookedElement.innerHTML = translatedHTML;
 
   return true;
 }
 
 /**
  * Show original content in DOM for a post
- * Uses CSS class removal for visibility control to avoid Glimmer DOM conflicts
+ * Restores cached originalHTML to the .cooked element
  */
 function showOriginalInDOM(postId) {
   const article = document.querySelector(`article[data-post-id="${postId}"]`);
   if (!article) return false;
 
-  // Remove CSS class to show original content (no inline style modifications)
-  article.classList.remove("is-translated");
+  const cookedElement = article.querySelector(".cooked");
+  const state = translationState.get(postId);
+
+  if (cookedElement && state?.originalHTML) {
+    // Restore original innerHTML
+    cookedElement.innerHTML = state.originalHTML;
+  }
 
   return true;
 }
@@ -402,6 +389,7 @@ async function translateSinglePost(postId, targetLang) {
       isTranslated: false,
       translatedHTML: null,
       translatedLang: null,
+      originalHTML: null,  // Cached for restoration
     };
     translationState.set(postId, state);
   }
@@ -736,7 +724,7 @@ class TranslateAllButton extends Component {
   }
 }
 
-export default apiInitializer("1.4.0", (api) => {
+export default apiInitializer("1.5.0", (api) => {
   // Check if feature is enabled
   if (!settings.show_translation_button) {
     return;
@@ -761,36 +749,27 @@ export default apiInitializer("1.4.0", (api) => {
   let translationObserver = null;
   let stickyHeaderObserver = null;
 
-  // Reset global state on page change
-  api.onPageChange(() => {
-    // === CSS class cleanup (before Glimmer teardown) ===
-    // Remove .is-translated class from all articles to prevent DOM conflicts
-    document.querySelectorAll("article.is-translated").forEach((article) => {
-      article.classList.remove("is-translated");
-    });
-
-    // Remove translation containers (clean DOM before Glimmer teardown)
-    document.querySelectorAll(".post-translator-content").forEach((el) => {
-      el.remove();
-    });
-
-    // Cleanup previous observers
-    if (translationObserver) {
-      translationObserver.disconnect();
-      translationObserver = null;
-    }
-    if (stickyHeaderObserver) {
-      stickyHeaderObserver.disconnect();
-      stickyHeaderObserver = null;
+  // === routeWillChange: Early state reset BEFORE Glimmer teardown ===
+  // This prevents DOM conflicts because state is cleared before Glimmer tries to clean up
+  const router = api.container.lookup("service:router");
+  router.on("routeWillChange", () => {
+    if (settings.debug_mode) {
+      console.log("[Post Translator] routeWillChange: resetting state");
     }
 
-    // Reset translation state for new topic
-    globalState.isTranslating = false;
-    globalState.allTranslated = false;
-    globalState.currentLang = null;
-    globalState.progress = { current: 0, total: 0 };
+    // Clear translation state (no DOM cleanup needed - innerHTML approach)
+    translationState.clear();
 
-    // Reset title state for new topic
+    // Reset global state
+    globalState = {
+      isTranslating: false,
+      allTranslated: false,
+      currentLang: null,
+      progress: { current: 0, total: 0 },
+      abortController: null,
+    };
+
+    // Reset title state
     titleState = {
       isTranslated: false,
       originalTitle: null,
@@ -799,12 +778,23 @@ export default apiInitializer("1.4.0", (api) => {
       translatedLang: null,
     };
 
-    // Clear translation cache for new topic
-    translationState.clear();
-
     // Update component if it exists
     if (componentInstance) {
       componentInstance.syncFromGlobalState();
+    }
+  });
+
+  // === onPageChange: Observer setup only ===
+  // DOM cleanup is no longer needed (innerHTML approach doesn't add sibling nodes)
+  api.onPageChange(() => {
+    // Cleanup previous observers
+    if (translationObserver) {
+      translationObserver.disconnect();
+      translationObserver = null;
+    }
+    if (stickyHeaderObserver) {
+      stickyHeaderObserver.disconnect();
+      stickyHeaderObserver = null;
     }
 
     // Setup new observers after a short delay (wait for topic to render)
