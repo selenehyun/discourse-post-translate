@@ -7,6 +7,7 @@ import { on } from "@ember/modifier";
 import { fn } from "@ember/helper";
 
 // State management for tracking translations per post ID
+// Structure: { isTranslated, translatedHTML, translatedLang, originalCooked }
 const translationState = new Map();
 
 // Global translation state
@@ -21,8 +22,8 @@ let globalState = {
 // Title translation state
 let titleState = {
   isTranslated: false,
-  originalTitle: null,        // Original plain text
-  originalFancyTitle: null,   // Original HTML (fancy_title)
+  originalTitle: null,        // Original plain text (from model)
+  originalFancyTitle: null,   // Original HTML (fancy_title from model)
   translatedTitle: null,      // Translated text
   translatedLang: null,       // Cached translation language
 };
@@ -245,24 +246,35 @@ async function translateTitle(targetLang) {
 }
 
 /**
- * Apply translated title to DOM elements
+ * Apply translated title via Topic Model (Glimmer-safe)
+ * Falls back to DOM manipulation if model update fails
  */
 function applyTitleTranslation(translatedText) {
-  // Update main title
-  const mainTitle = document.querySelector("#topic-title .fancy-title");
-  if (mainTitle) {
-    mainTitle.textContent = translatedText;
-    if (settings.debug_mode) {
-      console.log("[Post Translator] Applied translation to main title");
-    }
-  }
+  const topicController = apiReference?.container?.lookup("controller:topic");
+  const topicModel = topicController?.model;
 
-  // Update sticky header title (if visible)
-  const stickyTitle = document.querySelector(".extra-info-wrapper .topic-link");
-  if (stickyTitle) {
-    stickyTitle.textContent = translatedText;
+  if (topicModel) {
+    // Cache original if not already cached
+    if (!titleState.originalTitle) {
+      titleState.originalTitle = topicModel.title;
+      titleState.originalFancyTitle = topicModel.fancy_title;
+    }
+
+    // Update model - Glimmer will auto-render
+    topicModel.set("title", translatedText);
+    topicModel.set("fancy_title", translatedText);
+
     if (settings.debug_mode) {
-      console.log("[Post Translator] Applied translation to sticky header title");
+      console.log("[Post Translator] Applied title translation via Model");
+    }
+  } else {
+    // Fallback to DOM if model not available
+    const mainTitle = document.querySelector("#topic-title .fancy-title");
+    if (mainTitle) {
+      mainTitle.textContent = translatedText;
+      if (settings.debug_mode) {
+        console.log("[Post Translator] Applied title translation via DOM (fallback)");
+      }
     }
   }
 
@@ -270,28 +282,31 @@ function applyTitleTranslation(translatedText) {
 }
 
 /**
- * Restore original title in DOM
+ * Restore original title via Topic Model (Glimmer-safe)
  */
 function showOriginalTitle() {
   if (!titleState.originalTitle) return;
 
-  // Restore main title
-  const mainTitle = document.querySelector("#topic-title .fancy-title");
-  if (mainTitle) {
-    mainTitle.innerHTML = titleState.originalFancyTitle || titleState.originalTitle;
-  }
+  const topicController = apiReference?.container?.lookup("controller:topic");
+  const topicModel = topicController?.model;
 
-  // Restore sticky header title
-  const stickyTitle = document.querySelector(".extra-info-wrapper .topic-link");
-  if (stickyTitle) {
-    stickyTitle.textContent = titleState.originalTitle;
+  if (topicModel) {
+    // Restore via model - Glimmer will auto-render
+    topicModel.set("title", titleState.originalTitle);
+    topicModel.set("fancy_title", titleState.originalFancyTitle);
+
+    if (settings.debug_mode) {
+      console.log("[Post Translator] Restored original title via Model");
+    }
+  } else {
+    // Fallback to DOM
+    const mainTitle = document.querySelector("#topic-title .fancy-title");
+    if (mainTitle) {
+      mainTitle.innerHTML = titleState.originalFancyTitle || titleState.originalTitle;
+    }
   }
 
   titleState.isTranslated = false;
-
-  if (settings.debug_mode) {
-    console.log("[Post Translator] Restored original title");
-  }
 }
 
 /**
@@ -337,50 +352,103 @@ function setupStickyHeaderObserver() {
 }
 
 /**
- * Apply translation to DOM if the post is currently rendered
- * Returns true if applied, false if post not in DOM
- * Uses innerHTML replacement (no sibling nodes) to avoid Glimmer DOM conflicts
+ * Apply translation via Post Model (Glimmer-safe)
+ * Updates post.cooked which triggers Glimmer re-render automatically
+ * This approach avoids DOM conflicts during page transitions
  */
-function applyTranslationToDOM(postId, translatedHTML) {
-  const article = document.querySelector(`article[data-post-id="${postId}"]`);
-  if (!article) return false; // Post not in DOM (will be applied when scrolled into view)
+function applyTranslation(postId, translatedHTML) {
+  const topicController = apiReference?.container?.lookup("controller:topic");
+  const postStream = topicController?.model?.postStream;
+  const posts = postStream?.posts || [];
+  const postModel = posts.find((p) => p.id === postId);
 
-  const cookedElement = article.querySelector(".cooked");
-  if (!cookedElement) return false;
-
-  // Cache original HTML on first access (before any translation)
+  // Get or create state
   let state = translationState.get(postId);
-  if (state && !state.originalHTML) {
-    state.originalHTML = cookedElement.innerHTML;
+  if (!state) {
+    state = {
+      isTranslated: false,
+      translatedHTML: null,
+      translatedLang: null,
+      originalCooked: null,
+    };
+    translationState.set(postId, state);
   }
 
-  // Replace innerHTML directly (Glimmer doesn't track innerHTML)
-  cookedElement.innerHTML = translatedHTML;
+  if (postModel) {
+    // Cache original cooked on first access
+    if (!state.originalCooked) {
+      state.originalCooked = postModel.cooked;
+    }
 
-  return true;
-}
+    // Update model - Glimmer will auto-render
+    postModel.set("cooked", translatedHTML);
 
-/**
- * Show original content in DOM for a post
- * Restores cached originalHTML to the .cooked element
- */
-function showOriginalInDOM(postId) {
+    if (settings.debug_mode) {
+      console.log(`[Post Translator] Applied translation to post ${postId} via Model`);
+    }
+    return true;
+  }
+
+  // Fallback to DOM if model not available (edge case)
   const article = document.querySelector(`article[data-post-id="${postId}"]`);
   if (!article) return false;
 
   const cookedElement = article.querySelector(".cooked");
-  const state = translationState.get(postId);
+  if (!cookedElement) return false;
 
-  if (cookedElement && state?.originalHTML) {
-    // Restore original innerHTML
-    cookedElement.innerHTML = state.originalHTML;
+  // Cache original from DOM as fallback
+  if (!state.originalCooked) {
+    state.originalCooked = cookedElement.innerHTML;
   }
 
+  cookedElement.innerHTML = translatedHTML;
+
+  if (settings.debug_mode) {
+    console.log(`[Post Translator] Applied translation to post ${postId} via DOM (fallback)`);
+  }
   return true;
 }
 
 /**
- * Translate a single post and update its DOM
+ * Restore original content via Post Model (Glimmer-safe)
+ */
+function showOriginal(postId) {
+  const state = translationState.get(postId);
+  if (!state?.originalCooked) return false;
+
+  const topicController = apiReference?.container?.lookup("controller:topic");
+  const postStream = topicController?.model?.postStream;
+  const posts = postStream?.posts || [];
+  const postModel = posts.find((p) => p.id === postId);
+
+  if (postModel) {
+    // Restore via model - Glimmer will auto-render
+    postModel.set("cooked", state.originalCooked);
+
+    if (settings.debug_mode) {
+      console.log(`[Post Translator] Restored original for post ${postId} via Model`);
+    }
+    return true;
+  }
+
+  // Fallback to DOM
+  const article = document.querySelector(`article[data-post-id="${postId}"]`);
+  const cookedElement = article?.querySelector(".cooked");
+
+  if (cookedElement) {
+    cookedElement.innerHTML = state.originalCooked;
+
+    if (settings.debug_mode) {
+      console.log(`[Post Translator] Restored original for post ${postId} via DOM (fallback)`);
+    }
+    return true;
+  }
+
+  return false;
+}
+
+/**
+ * Translate a single post and update via Model
  */
 async function translateSinglePost(postId, targetLang) {
   let state = translationState.get(postId);
@@ -389,7 +457,7 @@ async function translateSinglePost(postId, targetLang) {
       isTranslated: false,
       translatedHTML: null,
       translatedLang: null,
-      originalHTML: null,  // Cached for restoration
+      originalCooked: null,
     };
     translationState.set(postId, state);
   }
@@ -397,7 +465,7 @@ async function translateSinglePost(postId, targetLang) {
   // Use cached translation if available for the same language
   if (state.translatedHTML && state.translatedLang === targetLang) {
     state.isTranslated = true;
-    applyTranslationToDOM(postId, state.translatedHTML);
+    applyTranslation(postId, state.translatedHTML);
     return true;
   }
 
@@ -408,7 +476,7 @@ async function translateSinglePost(postId, targetLang) {
     state.translatedHTML = result.translatedText;
     state.translatedLang = targetLang;
     state.isTranslated = true;
-    applyTranslationToDOM(postId, state.translatedHTML);
+    applyTranslation(postId, state.translatedHTML);
     return true;
   }
 
@@ -416,26 +484,25 @@ async function translateSinglePost(postId, targetLang) {
 }
 
 /**
- * Show original content for a single post (updates state and DOM if present)
+ * Show original content for a single post (updates state and Model)
  */
 function showOriginalPost(postId) {
   const state = translationState.get(postId);
   if (state) state.isTranslated = false;
-  showOriginalInDOM(postId);
+  showOriginal(postId);
 }
 
 /**
- * Show original content for all posts (both cached and DOM)
+ * Show original content for all posts via Model
  */
 function showAllOriginal() {
   // Restore title first
   showOriginalTitle();
 
-  // Update all cached translation states
+  // Update all cached translation states and restore via Model
   translationState.forEach((state, postId) => {
     state.isTranslated = false;
-    // Apply to DOM if post is currently rendered
-    showOriginalInDOM(postId);
+    showOriginal(postId);
   });
 
   globalState.allTranslated = false;
@@ -563,15 +630,17 @@ function setupDropdownCloseHandler() {
 }
 
 /**
- * Setup MutationObserver to apply cached translations when posts are rendered
- * This handles virtual scrolling - when user scrolls, new posts appear in DOM
+ * Setup observer to apply cached translations when new posts are loaded
+ * With Model-based approach, Glimmer handles re-renders automatically.
+ * This observer only ensures translations are applied to NEWLY LOADED posts
+ * (posts fetched from server as user scrolls to unloaded content)
  */
 function setupTranslationObserver() {
   const container = document.querySelector("#main-outlet, .topic-area");
   if (!container) return null;
 
   const observer = new MutationObserver((mutations) => {
-    // Apply cached translations during translation OR after completion
+    // Only act if we have translations active
     if (!globalState.isTranslating && !globalState.allTranslated) return;
 
     for (const mutation of mutations) {
@@ -587,12 +656,12 @@ function setupTranslationObserver() {
           const postId = parseInt(article.dataset.postId);
           const state = translationState.get(postId);
 
-          // Apply cached translation if this post was translated
+          // Apply cached translation via Model if this post was translated
           if (state?.isTranslated && state?.translatedHTML) {
             if (settings.debug_mode) {
-              console.log(`[Post Translator] Applying cached translation to post ${postId} (virtual scroll)`);
+              console.log(`[Post Translator] Applying cached translation to post ${postId} via Model (scroll)`);
             }
-            applyTranslationToDOM(postId, state.translatedHTML);
+            applyTranslation(postId, state.translatedHTML);
           }
         });
       });
@@ -724,7 +793,7 @@ class TranslateAllButton extends Component {
   }
 }
 
-export default apiInitializer("1.5.0", (api) => {
+export default apiInitializer("1.6.0", (api) => {
   // Check if feature is enabled
   if (!settings.show_translation_button) {
     return;
@@ -737,7 +806,7 @@ export default apiInitializer("1.5.0", (api) => {
     return;
   }
 
-  console.log("[Post Translator] Initializing for user:", currentUser.username);
+  console.log("[Post Translator] Initializing v1.6.0 (Model-based) for user:", currentUser.username);
 
   // Store API reference for postStream access
   apiReference = api;
@@ -749,15 +818,16 @@ export default apiInitializer("1.5.0", (api) => {
   let translationObserver = null;
   let stickyHeaderObserver = null;
 
-  // === routeWillChange: Early state reset BEFORE Glimmer teardown ===
-  // This prevents DOM conflicts because state is cleared before Glimmer tries to clean up
+  // === routeWillChange: State reset BEFORE navigation ===
+  // With Model-based approach, we just reset state - no DOM cleanup needed
+  // Glimmer handles all DOM lifecycle automatically
   const router = api.container.lookup("service:router");
   router.on("routeWillChange", () => {
     if (settings.debug_mode) {
-      console.log("[Post Translator] routeWillChange: resetting state");
+      console.log("[Post Translator] routeWillChange: resetting state (Model-based approach)");
     }
 
-    // Clear translation state (no DOM cleanup needed - innerHTML approach)
+    // Clear translation state - Model changes don't persist across routes
     translationState.clear();
 
     // Reset global state
@@ -785,7 +855,8 @@ export default apiInitializer("1.5.0", (api) => {
   });
 
   // === onPageChange: Observer setup only ===
-  // DOM cleanup is no longer needed (innerHTML approach doesn't add sibling nodes)
+  // With Model-based approach, no DOM restoration needed
+  // Observers are only for applying translations to newly loaded posts
   api.onPageChange(() => {
     // Cleanup previous observers
     if (translationObserver) {
