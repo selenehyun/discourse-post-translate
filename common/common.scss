@@ -1,5 +1,20 @@
 // Post Translator Theme Component Styles
 
+// Topic-level translate all container
+.translate-all-container {
+  display: flex;
+  justify-content: flex-end;
+  margin-bottom: 1em;
+  padding: 0 0.5em;
+}
+
+// Progress indicator styling
+.translate-all-progress {
+  color: var(--primary-medium);
+  font-size: var(--font-down-1);
+  margin-left: 0.5em;
+}
+
 // Dropdown container
 .post-translate-dropdown {
   position: relative;
@@ -35,7 +50,6 @@
 .post-translate-menu {
   display: none;
   position: absolute;
-  bottom: 100%;
   left: 0;
   min-width: 120px;
   background-color: var(--secondary);
@@ -43,7 +57,18 @@
   border-radius: 4px;
   box-shadow: 0 2px 8px rgba(0, 0, 0, 0.15);
   z-index: 1000;
+
+  // Default: dropdown opens above (for post-level buttons)
+  bottom: 100%;
   margin-bottom: 4px;
+
+  // In translate-all container: dropdown opens below
+  .translate-all-container & {
+    bottom: auto;
+    top: 100%;
+    margin-bottom: 0;
+    margin-top: 4px;
+  }
 
   .post-translate-dropdown.is-open & {
     display: block;

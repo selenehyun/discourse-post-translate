@@ -1,10 +1,22 @@
 import { apiInitializer } from "discourse/lib/api";
 import { i18n } from "discourse-i18n";
+import Component from "@glimmer/component";
+import { tracked } from "@glimmer/tracking";
+import { action } from "@ember/object";
+import { on } from "@ember/modifier";
+import { fn } from "@ember/helper";
 
 // State management for tracking translations per post ID
 const translationState = new Map();
-// Track which posts have buttons to avoid duplicates
-const buttonsAdded = new Set();
+
+// Global translation state
+let globalState = {
+  isTranslating: false,
+  allTranslated: false,
+  currentLang: null,
+  progress: { current: 0, total: 0 },
+  abortController: null,
+};
 
 // Supported target languages
 const SUPPORTED_LANGUAGES = [
@@ -13,8 +25,11 @@ const SUPPORTED_LANGUAGES = [
   { code: "zh", label: "中文" },
 ];
 
+// Reference to the component instance for state updates
+let componentInstance = null;
+
 /**
- * Call the translation API
+ * Call the translation API for a single post
  */
 async function translatePost(postId, targetLang) {
   if (settings.debug_mode) {
@@ -44,6 +59,9 @@ async function translatePost(postId, targetLang) {
     () => controller.abort(),
     settings.translation_api_timeout
   );
+
+  // Store abort controller for cancellation
+  globalState.abortController = controller;
 
   try {
     const headers = {
@@ -96,7 +114,7 @@ async function translatePost(postId, targetLang) {
     clearTimeout(timeoutId);
 
     if (error.name === "AbortError") {
-      console.error("[Post Translator] Request timeout");
+      console.error("[Post Translator] Request timeout or cancelled");
       return { success: false, error: "Request timeout" };
     }
 
@@ -129,15 +147,13 @@ function getOrCreateTranslationContainer(postId) {
 }
 
 /**
- * Handle translation for a specific language
+ * Translate a single post and update its DOM
  */
-async function handleTranslate(postId, targetLang, buttonContainer) {
-  console.log("[Post Translator] handleTranslate called for post:", postId, "lang:", targetLang);
-
+async function translateSinglePost(postId, targetLang) {
   const elements = getOrCreateTranslationContainer(postId);
   if (!elements) {
     console.error("[Post Translator] Could not find elements for post", postId);
-    return;
+    return false;
   }
 
   const { cookedElement, container } = elements;
@@ -152,42 +168,17 @@ async function handleTranslate(postId, targetLang, buttonContainer) {
     translationState.set(postId, state);
   }
 
-  const mainButton = buttonContainer.querySelector(".post-translate-btn");
-  const labelSpan = mainButton?.querySelector(".d-button-label");
-
-  // If already showing translation in same language, toggle back to original
-  if (state.isTranslated && state.translatedLang === targetLang) {
-    cookedElement.style.display = "";
-    container.style.display = "none";
-    state.isTranslated = false;
-    if (labelSpan) {
-      labelSpan.textContent = i18n(themePrefix("post_translator.translate_button"));
-    }
-    return;
-  }
-
   // Use cached translation if available for the same language
   if (state.translatedHTML && state.translatedLang === targetLang) {
     container.innerHTML = state.translatedHTML;
     cookedElement.style.display = "none";
     container.style.display = "";
     state.isTranslated = true;
-    if (labelSpan) {
-      labelSpan.textContent = i18n(themePrefix("post_translator.show_original_button"));
-    }
-    return;
+    return true;
   }
 
-  // Show loading state
-  if (mainButton) mainButton.disabled = true;
-  if (labelSpan) {
-    labelSpan.textContent = i18n(themePrefix("post_translator.translating"));
-  }
-
-  // Call API with selected language
+  // Call API
   const result = await translatePost(postId, targetLang);
-
-  if (mainButton) mainButton.disabled = false;
 
   if (result.success) {
     state.translatedHTML = result.translatedText;
@@ -196,42 +187,96 @@ async function handleTranslate(postId, targetLang, buttonContainer) {
     cookedElement.style.display = "none";
     container.style.display = "";
     state.isTranslated = true;
-    if (labelSpan) {
-      labelSpan.textContent = i18n(themePrefix("post_translator.show_original_button"));
-    }
-  } else {
-    // Determine appropriate error message based on error type
-    let errorMessage;
-    if (result.error === "Request timeout") {
-      errorMessage = i18n(themePrefix("post_translator.error_timeout"));
-    } else if (result.error === "Network error" || result.error?.includes("fetch")) {
-      errorMessage = i18n(themePrefix("post_translator.error_network"));
-    } else {
-      errorMessage = i18n(themePrefix("post_translator.error_generic"));
-    }
-
-    // Show error message briefly in button, then restore
-    if (labelSpan) {
-      labelSpan.textContent = errorMessage;
-      setTimeout(() => {
-        labelSpan.textContent = i18n(themePrefix("post_translator.translate_button"));
-      }, 3000);
-    }
+    return true;
   }
+
+  return false;
 }
 
 /**
- * Toggle dropdown menu visibility
+ * Show original content for a single post
  */
-function toggleDropdown(dropdown) {
-  const isOpen = dropdown.classList.contains("is-open");
-  // Close all other dropdowns first
-  document.querySelectorAll(".post-translate-dropdown.is-open").forEach((d) => {
-    d.classList.remove("is-open");
+function showOriginalPost(postId) {
+  const article = document.querySelector(`article[data-post-id="${postId}"]`);
+  if (!article) return;
+
+  const cookedElement = article.querySelector(".cooked");
+  const container = article.querySelector(".post-translator-content");
+
+  if (cookedElement) cookedElement.style.display = "";
+  if (container) container.style.display = "none";
+
+  const state = translationState.get(postId);
+  if (state) state.isTranslated = false;
+}
+
+/**
+ * Show original content for all posts
+ */
+function showAllOriginal() {
+  const posts = document.querySelectorAll(".topic-post article[data-post-id]");
+  posts.forEach((article) => {
+    const postId = parseInt(article.dataset.postId);
+    showOriginalPost(postId);
   });
-  if (!isOpen) {
-    dropdown.classList.add("is-open");
+  globalState.allTranslated = false;
+  globalState.currentLang = null;
+}
+
+/**
+ * Translate all posts sequentially (one at a time)
+ */
+async function translateAllPostsSequentially(targetLang, updateCallback) {
+  const postElements = document.querySelectorAll(".topic-post article[data-post-id]");
+  const total = postElements.length;
+
+  if (total === 0) {
+    console.log("[Post Translator] No posts found to translate");
+    return false;
   }
+
+  globalState.isTranslating = true;
+  globalState.progress.total = total;
+  globalState.progress.current = 0;
+
+  if (settings.debug_mode) {
+    console.log(`[Post Translator] Starting sequential translation of ${total} posts`);
+  }
+
+  let successCount = 0;
+
+  // Sequential translation using for loop with await
+  for (let i = 0; i < total; i++) {
+    // Check if cancelled
+    if (globalState.abortController?.signal.aborted) {
+      console.log("[Post Translator] Translation cancelled");
+      break;
+    }
+
+    const article = postElements[i];
+    const postId = parseInt(article.dataset.postId);
+
+    globalState.progress.current = i + 1;
+    if (updateCallback) updateCallback();
+
+    if (settings.debug_mode) {
+      console.log(`[Post Translator] Translating post ${i + 1}/${total} (ID: ${postId})`);
+    }
+
+    const success = await translateSinglePost(postId, targetLang);
+    if (success) successCount++;
+  }
+
+  globalState.isTranslating = false;
+  globalState.allTranslated = successCount > 0;
+  globalState.currentLang = targetLang;
+
+  if (settings.debug_mode) {
+    console.log(`[Post Translator] Translation complete. ${successCount}/${total} posts translated.`);
+  }
+
+  if (updateCallback) updateCallback();
+  return true;
 }
 
 /**
@@ -252,114 +297,122 @@ function setupDropdownCloseHandler() {
 }
 
 /**
- * Restore translation view if post was showing translation
+ * Glimmer component for "Translate All" button
  */
-function restoreTranslationView(postId) {
-  const state = translationState.get(postId);
-  if (!state?.isTranslated || !state?.translatedHTML) return;
+class TranslateAllButton extends Component {
+  @tracked isTranslating = false;
+  @tracked allTranslated = false;
+  @tracked showDropdown = false;
+  @tracked currentProgress = 0;
+  @tracked totalPosts = 0;
+  @tracked currentLang = null;
 
-  const elements = getOrCreateTranslationContainer(postId);
-  if (!elements) return;
-
-  const { cookedElement, container } = elements;
-  container.innerHTML = state.translatedHTML;
-  cookedElement.style.display = "none";
-  container.style.display = "";
-}
-
-/**
- * Add translate button with language dropdown to a single post
- */
-function addButtonToPost(post) {
-  const articleElement = post.querySelector("article[data-post-id]");
-  if (!articleElement) return;
-
-  const postId = articleElement.dataset.postId;
-  if (!postId) return;
-
-  const numericPostId = parseInt(postId);
-  const actionsContainer = post.querySelector(".post-controls .actions");
-  if (!actionsContainer) return;
-
-  // Check if dropdown already exists in DOM
-  if (actionsContainer.querySelector(".post-translate-dropdown")) {
-    // Button exists but need to check if translation view needs restoration
-    restoreTranslationView(numericPostId);
-    return;
+  constructor() {
+    super(...arguments);
+    componentInstance = this;
+    this.syncFromGlobalState();
   }
 
-  // Get current state for label
-  const state = translationState.get(numericPostId);
-  const isTranslated = state?.isTranslated || false;
+  syncFromGlobalState() {
+    this.isTranslating = globalState.isTranslating;
+    this.allTranslated = globalState.allTranslated;
+    this.currentProgress = globalState.progress.current;
+    this.totalPosts = globalState.progress.total;
+    this.currentLang = globalState.currentLang;
+  }
 
-  const label = isTranslated
-    ? i18n(themePrefix("post_translator.show_original_button"))
-    : i18n(themePrefix("post_translator.translate_button"));
-
-  // Create dropdown container
-  const dropdown = document.createElement("div");
-  dropdown.className = "post-translate-dropdown";
-
-  // Create main button
-  const mainButton = document.createElement("button");
-  mainButton.className = "btn btn-icon-text post-translate-btn btn-flat";
-  mainButton.type = "button";
-  mainButton.title = label;
-  mainButton.innerHTML = `<svg class="fa d-icon d-icon-globe svg-icon svg-string" xmlns="http://www.w3.org/2000/svg"><use href="#globe"></use></svg><span class="d-button-label">${label}</span><svg class="fa d-icon d-icon-caret-down svg-icon svg-string dropdown-caret" xmlns="http://www.w3.org/2000/svg"><use href="#caret-down"></use></svg>`;
-
-  // Create dropdown menu
-  const menu = document.createElement("div");
-  menu.className = "post-translate-menu";
-
-  // Add language options
-  SUPPORTED_LANGUAGES.forEach((lang) => {
-    const option = document.createElement("button");
-    option.className = "post-translate-menu-item";
-    option.type = "button";
-    option.textContent = lang.label;
-    option.dataset.lang = lang.code;
-
-    option.addEventListener("click", (e) => {
-      e.preventDefault();
-      e.stopPropagation();
-      dropdown.classList.remove("is-open");
-      handleTranslate(numericPostId, lang.code, dropdown);
-    });
-
-    menu.appendChild(option);
-  });
-
-  // Toggle dropdown on main button click
-  mainButton.addEventListener("click", (e) => {
-    e.preventDefault();
-    e.stopPropagation();
-
-    // If currently showing translation, clicking toggles back to original
-    const currentState = translationState.get(numericPostId);
-    if (currentState?.isTranslated) {
-      handleTranslate(numericPostId, currentState.translatedLang, dropdown);
-    } else {
-      toggleDropdown(dropdown);
+  get buttonLabel() {
+    if (this.isTranslating) {
+      return i18n(themePrefix("post_translator.translating_progress"), {
+        current: this.currentProgress,
+        total: this.totalPosts,
+      });
     }
-  });
+    if (this.allTranslated) {
+      return i18n(themePrefix("post_translator.show_original_button"));
+    }
+    return i18n(themePrefix("post_translator.translate_all_button"));
+  }
 
-  dropdown.appendChild(mainButton);
-  dropdown.appendChild(menu);
-  actionsContainer.appendChild(dropdown);
+  get showCaret() {
+    return !this.isTranslating && !this.allTranslated;
+  }
 
-  // Restore translation view if this post was showing translation before re-render
-  restoreTranslationView(numericPostId);
+  @action
+  handleButtonClick(event) {
+    event.preventDefault();
+    event.stopPropagation();
+
+    if (this.isTranslating) return;
+
+    if (this.allTranslated) {
+      showAllOriginal();
+      this.allTranslated = false;
+      this.currentLang = null;
+    } else {
+      this.showDropdown = !this.showDropdown;
+    }
+  }
+
+  @action
+  async selectLanguage(langCode, event) {
+    event.preventDefault();
+    event.stopPropagation();
+
+    this.showDropdown = false;
+    this.isTranslating = true;
+
+    const updateUI = () => {
+      this.syncFromGlobalState();
+    };
+
+    await translateAllPostsSequentially(langCode, updateUI);
+
+    this.syncFromGlobalState();
+  }
+
+  @action
+  closeDropdown() {
+    this.showDropdown = false;
+  }
+
+  <template>
+    <div class="translate-all-container">
+      <div class="post-translate-dropdown {{if this.showDropdown 'is-open'}}">
+        <button
+          class="btn btn-flat post-translate-btn"
+          type="button"
+          disabled={{this.isTranslating}}
+          {{on "click" this.handleButtonClick}}
+        >
+          <svg class="fa d-icon d-icon-globe svg-icon svg-string" xmlns="http://www.w3.org/2000/svg"><use href="#globe"></use></svg>
+          <span class="d-button-label">{{this.buttonLabel}}</span>
+          {{#if this.showCaret}}
+            <svg class="fa d-icon d-icon-caret-down svg-icon svg-string dropdown-caret" xmlns="http://www.w3.org/2000/svg"><use href="#caret-down"></use></svg>
+          {{/if}}
+        </button>
+
+        <div class="post-translate-menu">
+          {{#each this.languages as |lang|}}
+            <button
+              class="post-translate-menu-item"
+              type="button"
+              {{on "click" (fn this.selectLanguage lang.code)}}
+            >
+              {{lang.label}}
+            </button>
+          {{/each}}
+        </div>
+      </div>
+    </div>
+  </template>
+
+  get languages() {
+    return SUPPORTED_LANGUAGES;
+  }
 }
 
-/**
- * Scan all posts and add buttons
- */
-function scanAndAddButtons() {
-  const posts = document.querySelectorAll(".topic-post");
-  posts.forEach(addButtonToPost);
-}
-
-export default apiInitializer("1.0.0", (api) => {
+export default apiInitializer("1.1.0", (api) => {
   // Check if feature is enabled
   if (!settings.show_translation_button) {
     return;
@@ -374,53 +427,23 @@ export default apiInitializer("1.0.0", (api) => {
 
   console.log("[Post Translator] Initializing for user:", currentUser.username);
 
-  // Setup global dropdown close handler (only once)
+  // Setup global dropdown close handler
   setupDropdownCloseHandler();
 
-  let observer = null;
-  let scanTimeout = null;
-
-  const debouncedScan = () => {
-    if (scanTimeout) {
-      clearTimeout(scanTimeout);
-    }
-    scanTimeout = setTimeout(scanAndAddButtons, 100);
-  };
-
-  // Setup MutationObserver
-  const setupObserver = () => {
-    if (observer) {
-      observer.disconnect();
-    }
-
-    const container = document.querySelector("#main-outlet, .topic-area, body");
-    if (!container) return;
-
-    observer = new MutationObserver((mutations) => {
-      for (const mutation of mutations) {
-        if (mutation.addedNodes.length > 0) {
-          debouncedScan();
-          break;
-        }
-      }
-    });
-
-    observer.observe(container, {
-      childList: true,
-      subtree: true,
-    });
-
-    // Initial scan
-    debouncedScan();
-  };
-
-  // Setup on page change
+  // Reset global state on page change
   api.onPageChange(() => {
-    // Clear button tracking for fresh page
-    buttonsAdded.clear();
-    setTimeout(setupObserver, 300);
+    // Reset translation state for new topic
+    globalState.isTranslating = false;
+    globalState.allTranslated = false;
+    globalState.currentLang = null;
+    globalState.progress = { current: 0, total: 0 };
+
+    // Update component if it exists
+    if (componentInstance) {
+      componentInstance.syncFromGlobalState();
+    }
   });
 
-  // Initial setup
-  setTimeout(setupObserver, 500);
+  // Render the Translate All button at the top of the topic
+  api.renderInOutlet("topic-above-post-stream", TranslateAllButton);
 });

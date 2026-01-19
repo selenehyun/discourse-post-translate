@@ -1,8 +1,10 @@
 en:
   post_translator:
     translate_button: "Translate"
+    translate_all_button: "Translate All"
     show_original_button: "Show Original"
     translating: "Translating..."
+    translating_progress: "Translating... (%{current}/%{total})"
     error_generic: "Translation failed. Please try again."
     error_timeout: "Translation request timed out."
     error_network: "Network error. Please check your connection."

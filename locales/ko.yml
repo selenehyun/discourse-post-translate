@@ -1,8 +1,10 @@
 ko:
   post_translator:
     translate_button: "번역"
+    translate_all_button: "전체 번역"
     show_original_button: "원문 보기"
     translating: "번역 중..."
+    translating_progress: "번역 중... (%{current}/%{total})"
     error_generic: "번역에 실패했습니다. 다시 시도해주세요."
     error_timeout: "번역 요청 시간이 초과되었습니다."
     error_network: "네트워크 오류입니다. 연결을 확인해주세요."
