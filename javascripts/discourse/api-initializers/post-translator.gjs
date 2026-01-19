@@ -18,6 +18,15 @@ let globalState = {
   abortController: null,
 };
 
+// Title translation state
+let titleState = {
+  isTranslated: false,
+  originalTitle: null,        // Original plain text
+  originalFancyTitle: null,   // Original HTML (fancy_title)
+  translatedTitle: null,      // Translated text
+  translatedLang: null,       // Cached translation language
+};
+
 // Supported target languages
 const SUPPORTED_LANGUAGES = [
   { code: "en", label: "English" },
@@ -141,6 +150,193 @@ async function translatePost(postId, targetLang) {
 }
 
 /**
+ * Translate the topic title
+ */
+async function translateTitle(targetLang) {
+  const topicController = apiReference?.container?.lookup("controller:topic");
+  const originalTitle = topicController?.model?.title;
+
+  if (!originalTitle) {
+    if (settings.debug_mode) {
+      console.log("[Post Translator] Title not found");
+    }
+    return { success: false, error: "Title not found" };
+  }
+
+  // Cache original title on first call
+  if (!titleState.originalTitle) {
+    titleState.originalTitle = originalTitle;
+    titleState.originalFancyTitle = topicController?.model?.fancy_title;
+  }
+
+  // Use cached translation if available for the same language
+  if (titleState.translatedTitle && titleState.translatedLang === targetLang) {
+    if (settings.debug_mode) {
+      console.log("[Post Translator] Using cached title translation");
+    }
+    return { success: true, translatedText: titleState.translatedTitle };
+  }
+
+  if (settings.debug_mode) {
+    console.log("[Post Translator] Translating title:", originalTitle);
+  }
+
+  // Setup timeout with AbortController
+  const controller = new AbortController();
+  const timeoutId = setTimeout(
+    () => controller.abort(),
+    settings.translation_api_timeout
+  );
+
+  try {
+    const headers = {
+      "Content-Type": "application/json",
+    };
+
+    if (settings.translation_api_key) {
+      headers["X-API-Key"] = settings.translation_api_key;
+    }
+
+    const response = await fetch(settings.translation_api_url, {
+      method: "POST",
+      headers,
+      body: JSON.stringify({
+        content: originalTitle,
+        sourceLang: "auto",
+        targetLang: targetLang,
+        format: "text",  // Title is plain text
+        mode: "fast",
+      }),
+      signal: controller.signal,
+    });
+
+    clearTimeout(timeoutId);
+
+    const data = await response.json();
+
+    if (settings.debug_mode) {
+      console.log("[Post Translator] Title API Response:", data);
+    }
+
+    if (!response.ok) {
+      return {
+        success: false,
+        error: data.error || "Title translation failed",
+      };
+    }
+
+    // Cache the translated title
+    titleState.translatedTitle = data.translated;
+    titleState.translatedLang = targetLang;
+
+    return {
+      success: true,
+      translatedText: data.translated,
+    };
+  } catch (error) {
+    clearTimeout(timeoutId);
+
+    if (error.name === "AbortError") {
+      return { success: false, error: "Request timeout" };
+    }
+
+    return { success: false, error: error.message || "Network error" };
+  }
+}
+
+/**
+ * Apply translated title to DOM elements
+ */
+function applyTitleTranslation(translatedText) {
+  // Update main title
+  const mainTitle = document.querySelector("#topic-title .fancy-title");
+  if (mainTitle) {
+    mainTitle.textContent = translatedText;
+    if (settings.debug_mode) {
+      console.log("[Post Translator] Applied translation to main title");
+    }
+  }
+
+  // Update sticky header title (if visible)
+  const stickyTitle = document.querySelector(".extra-info-wrapper .topic-link");
+  if (stickyTitle) {
+    stickyTitle.textContent = translatedText;
+    if (settings.debug_mode) {
+      console.log("[Post Translator] Applied translation to sticky header title");
+    }
+  }
+
+  titleState.isTranslated = true;
+}
+
+/**
+ * Restore original title in DOM
+ */
+function showOriginalTitle() {
+  if (!titleState.originalTitle) return;
+
+  // Restore main title
+  const mainTitle = document.querySelector("#topic-title .fancy-title");
+  if (mainTitle) {
+    mainTitle.innerHTML = titleState.originalFancyTitle || titleState.originalTitle;
+  }
+
+  // Restore sticky header title
+  const stickyTitle = document.querySelector(".extra-info-wrapper .topic-link");
+  if (stickyTitle) {
+    stickyTitle.textContent = titleState.originalTitle;
+  }
+
+  titleState.isTranslated = false;
+
+  if (settings.debug_mode) {
+    console.log("[Post Translator] Restored original title");
+  }
+}
+
+/**
+ * Setup MutationObserver for sticky header to apply translated title when it appears
+ */
+function setupStickyHeaderObserver() {
+  const header = document.querySelector(".d-header");
+  if (!header) return null;
+
+  const observer = new MutationObserver((mutations) => {
+    // Only apply if title is translated and we have the translated text
+    if (!titleState.isTranslated || !titleState.translatedTitle) return;
+
+    for (const mutation of mutations) {
+      mutation.addedNodes.forEach((node) => {
+        if (node.nodeType !== 1) return; // Not an element
+
+        // Check if .extra-info-wrapper was added
+        const stickyWrapper = node.matches?.(".extra-info-wrapper")
+          ? node
+          : node.querySelector?.(".extra-info-wrapper");
+
+        if (stickyWrapper) {
+          const topicLink = stickyWrapper.querySelector(".topic-link");
+          if (topicLink) {
+            topicLink.textContent = titleState.translatedTitle;
+            if (settings.debug_mode) {
+              console.log("[Post Translator] Applied translated title to sticky header (observer)");
+            }
+          }
+        }
+      });
+    }
+  });
+
+  observer.observe(header, { childList: true, subtree: true });
+
+  if (settings.debug_mode) {
+    console.log("[Post Translator] Sticky header observer setup complete");
+  }
+
+  return observer;
+}
+
+/**
  * Get or create translation container for a post
  */
 function getOrCreateTranslationContainer(postId) {
@@ -241,6 +437,9 @@ function showOriginalPost(postId) {
  * Show original content for all posts (both cached and DOM)
  */
 function showAllOriginal() {
+  // Restore title first
+  showOriginalTitle();
+
   // Update all cached translation states
   translationState.forEach((state, postId) => {
     state.isTranslated = false;
@@ -268,16 +467,20 @@ async function translateAllPostsSequentially(targetLang, updateCallback) {
 
   // stream contains all post IDs in the topic
   const allPostIds = postStream.stream || [];
-  const total = allPostIds.length;
+  const postCount = allPostIds.length;
 
-  if (total === 0) {
+  if (postCount === 0) {
     console.log("[Post Translator] No posts found to translate");
     return false;
   }
 
+  // Total = posts + 1 (title)
+  const total = postCount + 1;
+
   if (settings.debug_mode) {
-    console.log(`[Post Translator] Found ${total} posts in postStream`);
+    console.log(`[Post Translator] Found ${postCount} posts in postStream`);
     console.log(`[Post Translator] Loaded posts: ${postStream.posts?.length || 0}`);
+    console.log(`[Post Translator] Total items to translate: ${total} (including title)`);
   }
 
   globalState.isTranslating = true;
@@ -285,14 +488,33 @@ async function translateAllPostsSequentially(targetLang, updateCallback) {
   globalState.progress.current = 0;
 
   if (settings.debug_mode) {
-    console.log(`[Post Translator] Starting sequential translation of ${total} posts`);
+    console.log(`[Post Translator] Starting sequential translation`);
   }
 
   let successCount = 0;
   let skippedCount = 0;
 
-  // Sequential translation using for loop with await
-  for (let i = 0; i < total; i++) {
+  // === Step 1: Translate title first ===
+  globalState.progress.current = 1;
+  if (updateCallback) updateCallback();
+
+  if (settings.debug_mode) {
+    console.log(`[Post Translator] Translating title (1/${total})`);
+  }
+
+  const titleResult = await translateTitle(targetLang);
+  if (titleResult.success) {
+    applyTitleTranslation(titleResult.translatedText);
+    successCount++;
+  } else {
+    skippedCount++;
+    if (settings.debug_mode) {
+      console.log(`[Post Translator] Title translation skipped: ${titleResult.error}`);
+    }
+  }
+
+  // === Step 2: Translate posts sequentially ===
+  for (let i = 0; i < postCount; i++) {
     // Check if cancelled
     if (globalState.abortController?.signal.aborted) {
       console.log("[Post Translator] Translation cancelled");
@@ -301,11 +523,12 @@ async function translateAllPostsSequentially(targetLang, updateCallback) {
 
     const postId = allPostIds[i];
 
-    globalState.progress.current = i + 1;
+    // Progress: +2 because title is 1, first post is 2
+    globalState.progress.current = i + 2;
     if (updateCallback) updateCallback();
 
     if (settings.debug_mode) {
-      console.log(`[Post Translator] Translating post ${i + 1}/${total} (ID: ${postId})`);
+      console.log(`[Post Translator] Translating post ${i + 2}/${total} (ID: ${postId})`);
     }
 
     const success = await translateSinglePost(postId, targetLang);
@@ -324,7 +547,7 @@ async function translateAllPostsSequentially(targetLang, updateCallback) {
   globalState.currentLang = targetLang;
 
   if (settings.debug_mode) {
-    console.log(`[Post Translator] Translation complete. ${successCount}/${total} posts translated, ${skippedCount} skipped.`);
+    console.log(`[Post Translator] Translation complete. ${successCount}/${total} items translated, ${skippedCount} skipped.`);
   }
 
   if (updateCallback) updateCallback();
@@ -510,7 +733,7 @@ class TranslateAllButton extends Component {
   }
 }
 
-export default apiInitializer("1.2.0", (api) => {
+export default apiInitializer("1.3.0", (api) => {
   // Check if feature is enabled
   if (!settings.show_translation_button) {
     return;
@@ -531,15 +754,20 @@ export default apiInitializer("1.2.0", (api) => {
   // Setup global dropdown close handler
   setupDropdownCloseHandler();
 
-  // Track translation observer for cleanup
+  // Track observers for cleanup
   let translationObserver = null;
+  let stickyHeaderObserver = null;
 
   // Reset global state on page change
   api.onPageChange(() => {
-    // Cleanup previous observer
+    // Cleanup previous observers
     if (translationObserver) {
       translationObserver.disconnect();
       translationObserver = null;
+    }
+    if (stickyHeaderObserver) {
+      stickyHeaderObserver.disconnect();
+      stickyHeaderObserver = null;
     }
 
     // Reset translation state for new topic
@@ -547,6 +775,15 @@ export default apiInitializer("1.2.0", (api) => {
     globalState.allTranslated = false;
     globalState.currentLang = null;
     globalState.progress = { current: 0, total: 0 };
+
+    // Reset title state for new topic
+    titleState = {
+      isTranslated: false,
+      originalTitle: null,
+      originalFancyTitle: null,
+      translatedTitle: null,
+      translatedLang: null,
+    };
 
     // Clear translation cache for new topic
     translationState.clear();
@@ -556,9 +793,10 @@ export default apiInitializer("1.2.0", (api) => {
       componentInstance.syncFromGlobalState();
     }
 
-    // Setup new observer after a short delay (wait for topic to render)
+    // Setup new observers after a short delay (wait for topic to render)
     setTimeout(() => {
       translationObserver = setupTranslationObserver();
+      stickyHeaderObserver = setupStickyHeaderObserver();
     }, 500);
   });
 
