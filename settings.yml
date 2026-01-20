@@ -72,20 +72,6 @@ button_icon:
     en: "Button icon name (Font Awesome 5 - e.g., globe, language, comments)"
     ko: "버튼 아이콘 이름 (Font Awesome 5 - 예: globe, language, comments)"
 
-button_text_translate:
-  type: string
-  default: ""
-  description:
-    en: "Custom 'Translate' text (leave empty for default)"
-    ko: "커스텀 '번역' 텍스트 (빈값 = 기본값)"
-
-button_text_show_original:
-  type: string
-  default: ""
-  description:
-    en: "Custom 'Show Original' text (leave empty for default)"
-    ko: "커스텀 '원본 보기' 텍스트 (빈값 = 기본값)"
-
 container_custom_css:
   type: string
   default: "display: flex; justify-content: flex-end; margin-bottom: 1em; padding: 0 0.5em;"

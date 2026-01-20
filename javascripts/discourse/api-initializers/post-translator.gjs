@@ -710,11 +710,9 @@ class TranslateAllButton extends Component {
       });
     }
     if (this.allTranslated) {
-      return settings.button_text_show_original ||
-        i18n(themePrefix("post_translator.show_original_button"));
+      return i18n(themePrefix("post_translator.show_original_button"));
     }
-    return settings.button_text_translate ||
-      i18n(themePrefix("post_translator.translate_all_button"));
+    return i18n(themePrefix("post_translator.translate_all_button"));
   }
 
   get showIcon() {
@@ -795,7 +793,9 @@ class TranslateAllButton extends Component {
           {{#if this.showIcon}}
             <svg class="fa d-icon svg-icon svg-string" xmlns="http://www.w3.org/2000/svg"><use href="#{{this.iconName}}"></use></svg>
           {{/if}}
-          <span class="d-button-label">{{this.buttonLabel}}</span>
+          {{#if this.buttonLabel}}
+            <span class="d-button-label">{{this.buttonLabel}}</span>
+          {{/if}}
           {{#if this.showCaret}}
             <svg class="fa d-icon d-icon-caret-down svg-icon svg-string dropdown-caret" xmlns="http://www.w3.org/2000/svg"><use href="#caret-down"></use></svg>
           {{/if}}
