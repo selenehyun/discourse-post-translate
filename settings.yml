@@ -32,3 +32,63 @@ debug_mode:
   description:
     en: "Enable debug logging to console"
     ko: "콘솔에 디버그 로깅 활성화"
+
+button_outlet_position:
+  type: enum
+  default: "topic-above-post-stream"
+  choices:
+    - topic-above-post-stream
+    - topic-below-post-stream
+    - topic-footer-buttons
+  description:
+    en: "Button position"
+    ko: "버튼 위치"
+
+button_background_color:
+  type: string
+  default: "var(--tertiary)"
+  description:
+    en: "Button background color (CSS value)"
+    ko: "버튼 배경색 (CSS 값)"
+
+button_text_color:
+  type: string
+  default: "var(--secondary)"
+  description:
+    en: "Button text color (CSS value)"
+    ko: "버튼 텍스트색 (CSS 값)"
+
+show_button_icon:
+  type: bool
+  default: true
+  description:
+    en: "Show icon on button"
+    ko: "버튼에 아이콘 표시"
+
+button_icon:
+  type: string
+  default: "globe"
+  description:
+    en: "Button icon name (Font Awesome 5 - e.g., globe, language, comments)"
+    ko: "버튼 아이콘 이름 (Font Awesome 5 - 예: globe, language, comments)"
+
+button_text_translate:
+  type: string
+  default: ""
+  description:
+    en: "Custom 'Translate' text (leave empty for default)"
+    ko: "커스텀 '번역' 텍스트 (빈값 = 기본값)"
+
+button_text_show_original:
+  type: string
+  default: ""
+  description:
+    en: "Custom 'Show Original' text (leave empty for default)"
+    ko: "커스텀 '원본 보기' 텍스트 (빈값 = 기본값)"
+
+container_custom_css:
+  type: string
+  default: "display: flex; justify-content: flex-end; margin-bottom: 1em; padding: 0 0.5em;"
+  description:
+    en: "CSS properties for .translate-all-container (injected via style tag)"
+    ko: ".translate-all-container에 적용할 CSS 속성 (style 태그로 주입)"

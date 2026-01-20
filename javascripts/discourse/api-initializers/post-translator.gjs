@@ -710,9 +710,31 @@ class TranslateAllButton extends Component {
       });
     }
     if (this.allTranslated) {
-      return i18n(themePrefix("post_translator.show_original_button"));
+      return settings.button_text_show_original ||
+        i18n(themePrefix("post_translator.show_original_button"));
     }
-    return i18n(themePrefix("post_translator.translate_all_button"));
+    return settings.button_text_translate ||
+      i18n(themePrefix("post_translator.translate_all_button"));
+  }
+
+  get showIcon() {
+    return settings.show_button_icon !== false;
+  }
+
+  get iconName() {
+    return settings.button_icon || "globe";
+  }
+
+  get buttonStyle() {
+    const bg = settings.button_background_color || "var(--tertiary)";
+    const text = settings.button_text_color || "var(--secondary)";
+    return `--pt-btn-bg: ${bg}; --pt-btn-text: ${text};`;
+  }
+
+  get containerCustomCss() {
+    const css = settings.container_custom_css;
+    if (!css) return "";
+    return `.translate-all-container { ${css} }`;
   }
 
   get showCaret() {
@@ -758,15 +780,21 @@ class TranslateAllButton extends Component {
   }
 
   <template>
+    {{#if this.containerCustomCss}}
+      <style>{{this.containerCustomCss}}</style>
+    {{/if}}
     <div class="translate-all-container">
       <div class="post-translate-dropdown {{if this.showDropdown 'is-open'}}">
         <button
           class="btn post-translate-btn"
           type="button"
+          style={{this.buttonStyle}}
           disabled={{this.isTranslating}}
           {{on "click" this.handleButtonClick}}
         >
-          <svg class="fa d-icon d-icon-globe svg-icon svg-string" xmlns="http://www.w3.org/2000/svg"><use href="#globe"></use></svg>
+          {{#if this.showIcon}}
+            <svg class="fa d-icon svg-icon svg-string" xmlns="http://www.w3.org/2000/svg"><use href="#{{this.iconName}}"></use></svg>
+          {{/if}}
           <span class="d-button-label">{{this.buttonLabel}}</span>
           {{#if this.showCaret}}
             <svg class="fa d-icon d-icon-caret-down svg-icon svg-string dropdown-caret" xmlns="http://www.w3.org/2000/svg"><use href="#caret-down"></use></svg>
@@ -875,6 +903,7 @@ export default apiInitializer("1.6.0", (api) => {
     }, 500);
   });
 
-  // Render the Translate All button at the top of the topic
-  api.renderInOutlet("topic-above-post-stream", TranslateAllButton);
+  // Render the Translate All button at the configured outlet position
+  const outlet = settings.button_outlet_position || "topic-above-post-stream";
+  api.renderInOutlet(outlet, TranslateAllButton);
 });

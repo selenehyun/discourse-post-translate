@@ -2,11 +2,11 @@
 // v1.6.0: Model-based approach with improved button visibility
 
 // Topic-level translate all container
+// Base styles minimal - use container_custom_css setting for layout customization
 .translate-all-container {
-  display: flex;
-  justify-content: flex-end;
-  margin-bottom: 1em;
-  padding: 0 0.5em;
+  // Default layout styles injected via inline style (container_custom_css setting)
+  // Only base resets here
+  box-sizing: border-box;
 }
 
 // Progress indicator styling
@@ -23,25 +23,26 @@
   margin-left: 0.5em;
 }
 
-// Translation button - prominent style
+// Translation button - prominent style with CSS variable customization
 .post-translate-btn {
-  background-color: var(--tertiary);
-  color: var(--secondary);
+  // Use CSS custom properties set via inline style for customization
+  // Fallback to Discourse tertiary/secondary colors
+  background-color: var(--pt-btn-bg, var(--tertiary));
+  color: var(--pt-btn-text, var(--secondary));
   border: none !important;
   outline: none;
   border-radius: 6px;
   padding: 0.5em 1em;
   font-weight: 500;
-  transition: background-color 0.2s ease, transform 0.15s ease;
+  transition: background-color 0.2s ease, transform 0.15s ease, filter 0.2s ease;
   box-shadow: 0 2px 4px rgba(0, 0, 0, 0.1);
 
   .d-icon {
-    color: var(--secondary);
+    color: var(--pt-btn-text, var(--secondary));
     opacity: 0.9;
   }
 
   &:hover {
-    background-color: var(--tertiary-hover, var(--tertiary));
     filter: brightness(1.1);
     transform: translateY(-1px);
   }
