@@ -782,11 +782,10 @@ class TranslateAllButton extends Component {
       <style>{{this.containerCustomCss}}</style>
     {{/if}}
     <div class="translate-all-container">
-      <div class="post-translate-dropdown {{if this.showDropdown 'is-open'}}">
+      <div class="post-translate-dropdown {{if this.showDropdown 'is-open'}}" style={{this.buttonStyle}}>
         <button
           class="btn post-translate-btn"
           type="button"
-          style={{this.buttonStyle}}
           disabled={{this.isTranslating}}
           {{on "click" this.handleButtonClick}}
         >
