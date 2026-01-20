@@ -90,8 +90,8 @@
   position: absolute;
   left: 0;
   min-width: 140px;
-  background-color: var(--pt-btn-bg, var(--tertiary));
-  border: 1px solid var(--pt-btn-bg, var(--tertiary));
+  background-color: var(--secondary);
+  border: 1px solid var(--primary-low);
   border-radius: 8px;
   box-shadow: 0 4px 16px rgba(0, 0, 0, 0.12);
   z-index: 1000;
@@ -136,16 +136,17 @@
   text-align: left;
   background: none;
   border: none;
-  color: var(--pt-btn-text, var(--secondary));
+  color: var(--primary);
   cursor: pointer;
   font-size: 0.95em;
-  transition: background-color 0.15s ease, filter 0.15s ease;
+  transition: background-color 0.15s ease;
 
   &:hover {
-    filter: brightness(1.15);
+    background-color: var(--pt-btn-bg, var(--tertiary));
+    color: var(--pt-btn-text, var(--secondary));
   }
 
   &:not(:last-child) {
-    border-bottom: 1px solid rgba(255, 255, 255, 0.15);
+    border-bottom: 1px solid var(--primary-very-low);
   }
 }
