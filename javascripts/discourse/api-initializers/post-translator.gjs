@@ -891,6 +891,121 @@ function showAllOriginalTopicTitles() {
 }
 
 /**
+ * Apply cached translation to a topic by its ID
+ * Used for newly loaded topics during infinite scroll
+ */
+function applyTopicTitleTranslationById(topicId, translatedText) {
+  const topics = getDiscoveryTopics();
+  const topic = topics.find((t) => t.id === topicId);
+
+  if (!topic) {
+    if (settings.debug_mode) {
+      console.log(`[Post Translator] Topic ${topicId} not found in model for cached translation`);
+    }
+    return false;
+  }
+
+  applyTopicTitleTranslation(topic, translatedText);
+  return true;
+}
+
+/**
+ * Translate a newly loaded topic during infinite scroll
+ */
+async function translateNewlyLoadedTopic(topicId) {
+  // Skip if not in translation mode
+  if (!topicListGlobalState.allTranslated) return;
+
+  // Check if already translated (cached)
+  const existingState = topicListState.get(topicId);
+  if (existingState?.isTranslated && existingState?.translatedTitle) {
+    // Apply cached translation
+    if (settings.debug_mode) {
+      console.log(`[Post Translator] Applying cached translation to topic ${topicId} (scroll)`);
+    }
+    applyTopicTitleTranslationById(topicId, existingState.translatedTitle);
+    return;
+  }
+
+  // Get topic from model
+  const topics = getDiscoveryTopics();
+  const topic = topics.find((t) => t.id === topicId);
+
+  if (!topic) {
+    if (settings.debug_mode) {
+      console.log(`[Post Translator] Topic ${topicId} not found in model`);
+    }
+    return;
+  }
+
+  // Translate using the current language
+  const targetLang = topicListGlobalState.currentLang;
+  if (!targetLang) {
+    if (settings.debug_mode) {
+      console.log(`[Post Translator] No target language set for auto-translation`);
+    }
+    return;
+  }
+
+  if (settings.debug_mode) {
+    console.log(`[Post Translator] Auto-translating newly loaded topic ${topicId} to ${targetLang}`);
+  }
+
+  const result = await translateTopicTitle(topic, targetLang);
+
+  if (result.success) {
+    applyTopicTitleTranslation(topic, result.translatedText);
+  } else if (settings.debug_mode) {
+    console.log(`[Post Translator] Failed to translate topic ${topicId}: ${result.error}`);
+  }
+}
+
+/**
+ * Setup MutationObserver for topic list to auto-translate newly loaded topics
+ * during infinite scroll when translation mode is active
+ */
+function setupTopicListObserver() {
+  const container = document.querySelector(".topic-list, .topic-list-body, #list-area");
+  if (!container) {
+    if (settings.debug_mode) {
+      console.log("[Post Translator] Topic list container not found for observer");
+    }
+    return null;
+  }
+
+  const observer = new MutationObserver((mutations) => {
+    // Only act if topic list translation is active
+    if (!topicListGlobalState.allTranslated) return;
+
+    for (const mutation of mutations) {
+      mutation.addedNodes.forEach((node) => {
+        if (node.nodeType !== 1) return; // Not an element
+
+        // Find newly added topic rows
+        const rows = node.matches?.("tr[data-topic-id]")
+          ? [node]
+          : node.querySelectorAll?.("tr[data-topic-id]") || [];
+
+        rows.forEach((row) => {
+          const topicId = parseInt(row.dataset.topicId, 10);
+          if (!isNaN(topicId)) {
+            translateNewlyLoadedTopic(topicId);
+          }
+        });
+      });
+    }
+  });
+
+  observer.observe(container, { childList: true, subtree: true });
+
+  if (settings.debug_mode) {
+    console.log("[Post Translator] Topic list observer setup complete");
+  }
+
+  return observer;
+}
+
+/**
  * Close all dropdowns when clicking outside
  */
 let dropdownHandlerSetup = false;
@@ -1307,6 +1422,7 @@ export default apiInitializer("1.7.0", (api) => {
   // Track observers for cleanup
   let translationObserver = null;
   let stickyHeaderObserver = null;
+  let topicListObserver = null;
 
   // === routeWillChange: State reset BEFORE navigation ===
   // With Model-based approach, we just reset state - no DOM cleanup needed
@@ -1377,7 +1493,7 @@ export default apiInitializer("1.7.0", (api) => {
 
   // === onPageChange: Observer setup only ===
   // With Model-based approach, no DOM restoration needed
-  // Observers are only for applying translations to newly loaded posts
+  // Observers are only for applying translations to newly loaded posts/topics
   api.onPageChange(() => {
     // Cleanup previous observers
     if (translationObserver) {
@@ -1388,13 +1504,21 @@ export default apiInitializer("1.7.0", (api) => {
       stickyHeaderObserver.disconnect();
       stickyHeaderObserver = null;
     }
+    if (topicListObserver) {
+      topicListObserver.disconnect();
+      topicListObserver = null;
+    }
 
-    // Setup new observers after a short delay (wait for topic to render)
+    // Setup new observers after a short delay (wait for content to render)
     const pageType = getPageType();
     if (pageType === "topic") {
       setTimeout(() => {
         translationObserver = setupTranslationObserver();
         stickyHeaderObserver = setupStickyHeaderObserver();
+      }, 500);
+    } else if (pageType === "discovery") {
+      setTimeout(() => {
+        topicListObserver = setupTopicListObserver();
       }, 500);
     }
   });
