@@ -10,7 +10,7 @@ import { fn } from "@ember/helper";
 // Structure: { isTranslated, translatedHTML, translatedLang, originalCooked }
 const translationState = new Map();
 
-// Global translation state
+// Global translation state (for topic detail page)
 let globalState = {
   isTranslating: false,
   allTranslated: false,
@@ -19,7 +19,7 @@ let globalState = {
   abortController: null,
 };
 
-// Title translation state
+// Title translation state (for topic detail page)
 let titleState = {
   isTranslated: false,
   originalTitle: null,        // Original plain text (from model)
@@ -27,6 +27,22 @@ let titleState = {
   translatedTitle: null,      // Translated text
   translatedLang: null,       // Cached translation language
 };
+
+// Topic list translation state (for discovery pages)
+// Structure: { topicId: { isTranslated, originalTitle, originalFancyTitle, translatedTitle, translatedLang }}
+const topicListState = new Map();
+
+// Global state for topic list translation
+let topicListGlobalState = {
+  isTranslating: false,
+  allTranslated: false,
+  currentLang: null,
+  progress: { current: 0, total: 0 },
+  abortController: null,
+};
+
+// Reference to topic list component instance
+let topicListComponentInstance = null;
 
 // Supported target languages
 const SUPPORTED_LANGUAGES = [
@@ -613,6 +629,268 @@ async function translateAllPostsSequentially(targetLang, updateCallback) {
 }
 
 /**
+ * Get current page type based on router route name
+ */
+function getPageType() {
+  const router = apiReference?.container?.lookup("service:router");
+  const routeName = router?.currentRouteName;
+
+  if (routeName?.startsWith("discovery.")) return "discovery";
+  if (routeName?.startsWith("topic.")) return "topic";
+  return "other";
+}
+
+/**
+ * Translate a single topic title in the topic list
+ */
+async function translateTopicTitle(topic, targetLang) {
+  const topicId = topic.id;
+
+  // Get or create state for this topic
+  let state = topicListState.get(topicId);
+  if (!state) {
+    state = {
+      isTranslated: false,
+      originalTitle: topic.title,
+      originalFancyTitle: topic.fancy_title,
+      translatedTitle: null,
+      translatedLang: null,
+    };
+    topicListState.set(topicId, state);
+  }
+
+  // Use cached translation if available for the same language
+  if (state.translatedTitle && state.translatedLang === targetLang) {
+    if (settings.debug_mode) {
+      console.log(`[Post Translator] Using cached topic title translation for topic ${topicId}`);
+    }
+    return { success: true, translatedText: state.translatedTitle };
+  }
+
+  // Cache original title on first call
+  if (!state.originalTitle) {
+    state.originalTitle = topic.title;
+    state.originalFancyTitle = topic.fancy_title;
+  }
+
+  if (settings.debug_mode) {
+    console.log(`[Post Translator] Translating topic ${topicId} title: ${topic.title}`);
+  }
+
+  // Setup timeout with AbortController
+  const controller = new AbortController();
+  const timeoutId = setTimeout(
+    () => controller.abort(),
+    settings.translation_api_timeout
+  );
+
+  // Store abort controller for cancellation
+  topicListGlobalState.abortController = controller;
+
+  try {
+    const headers = {
+      "Content-Type": "application/json",
+    };
+
+    if (settings.translation_api_key) {
+      headers["X-API-Key"] = settings.translation_api_key;
+    }
+
+    const response = await fetch(settings.translation_api_url, {
+      method: "POST",
+      headers,
+      body: JSON.stringify({
+        content: topic.title,
+        sourceLang: "auto",
+        targetLang: targetLang,
+        format: "text",  // Title is plain text
+        mode: "fast",
+      }),
+      signal: controller.signal,
+    });
+
+    clearTimeout(timeoutId);
+
+    const data = await response.json();
+
+    if (settings.debug_mode) {
+      console.log(`[Post Translator] Topic ${topicId} API Response:`, data);
+    }
+
+    if (!response.ok) {
+      return {
+        success: false,
+        error: data.error || "Title translation failed",
+      };
+    }
+
+    // Cache the translated title
+    state.translatedTitle = data.translated;
+    state.translatedLang = targetLang;
+
+    return {
+      success: true,
+      translatedText: data.translated,
+    };
+  } catch (error) {
+    clearTimeout(timeoutId);
+
+    if (error.name === "AbortError") {
+      return { success: false, error: "Request timeout" };
+    }
+
+    return { success: false, error: error.message || "Network error" };
+  }
+}
+
+/**
+ * Apply translated title to a topic in the list via Model (Glimmer-safe)
+ */
+function applyTopicTitleTranslation(topic, translatedText) {
+  const topicId = topic.id;
+  const state = topicListState.get(topicId);
+
+  // Cache original if not already cached
+  if (state && !state.originalTitle) {
+    state.originalTitle = topic.title;
+    state.originalFancyTitle = topic.fancy_title;
+  }
+
+  // Update model - Glimmer will auto-render
+  topic.set("title", translatedText);
+  topic.set("fancy_title", translatedText);
+
+  if (state) {
+    state.isTranslated = true;
+  }
+
+  if (settings.debug_mode) {
+    console.log(`[Post Translator] Applied topic ${topicId} title translation via Model`);
+  }
+}
+
+/**
+ * Restore original title for a topic in the list
+ */
+function showOriginalTopicTitle(topic) {
+  const topicId = topic.id;
+  const state = topicListState.get(topicId);
+
+  if (!state?.originalTitle) return;
+
+  // Restore via model - Glimmer will auto-render
+  topic.set("title", state.originalTitle);
+  topic.set("fancy_title", state.originalFancyTitle);
+
+  state.isTranslated = false;
+
+  if (settings.debug_mode) {
+    console.log(`[Post Translator] Restored original title for topic ${topicId}`);
+  }
+}
+
+/**
+ * Get topics from the discovery controller
+ */
+function getDiscoveryTopics() {
+  const discoveryController = apiReference?.container?.lookup("controller:discovery/topics");
+  let topics = discoveryController?.model?.topics;
+
+  // Try alternative discovery model locations
+  if (!topics) {
+    const discoveryTopicsController = apiReference?.container?.lookup("controller:discovery");
+    topics = discoveryTopicsController?.model?.topics;
+  }
+
+  // Try getting from route model
+  if (!topics) {
+    const router = apiReference?.container?.lookup("service:router");
+    topics = router?.currentRoute?.attributes?.topics;
+  }
+
+  return topics || [];
+}
+
+/**
+ * Translate all topic titles in the current list
+ */
+async function translateAllTopicTitles(targetLang, updateCallback) {
+  const topics = getDiscoveryTopics();
+
+  if (!topics || topics.length === 0) {
+    if (settings.debug_mode) {
+      console.log("[Post Translator] No topics found to translate");
+    }
+    return false;
+  }
+
+  const total = topics.length;
+
+  if (settings.debug_mode) {
+    console.log(`[Post Translator] Found ${total} topics to translate`);
+  }
+
+  topicListGlobalState.isTranslating = true;
+  topicListGlobalState.progress.total = total;
+  topicListGlobalState.progress.current = 0;
+
+  let successCount = 0;
+  let skippedCount = 0;
+
+  for (let i = 0; i < total; i++) {
+    // Check if cancelled
+    if (topicListGlobalState.abortController?.signal.aborted) {
+      console.log("[Post Translator] Topic list translation cancelled");
+      break;
+    }
+
+    const topic = topics[i];
+    topicListGlobalState.progress.current = i + 1;
+    if (updateCallback) updateCallback();
+
+    if (settings.debug_mode) {
+      console.log(`[Post Translator] Translating topic ${i + 1}/${total} (ID: ${topic.id})`);
+    }
+
+    const result = await translateTopicTitle(topic, targetLang);
+    if (result.success) {
+      applyTopicTitleTranslation(topic, result.translatedText);
+      successCount++;
+    } else {
+      skippedCount++;
+      if (settings.debug_mode) {
+        console.log(`[Post Translator] Skipped topic ${topic.id}: ${result.error}`);
+      }
+    }
+  }
+
+  topicListGlobalState.isTranslating = false;
+  topicListGlobalState.allTranslated = successCount > 0;
+  topicListGlobalState.currentLang = targetLang;
+
+  if (settings.debug_mode) {
+    console.log(`[Post Translator] Topic list translation complete. ${successCount}/${total} topics translated, ${skippedCount} skipped.`);
+  }
+
+  if (updateCallback) updateCallback();
+  return true;
+}
+
+/**
+ * Show original titles for all topics in the list
+ */
+function showAllOriginalTopicTitles() {
+  const topics = getDiscoveryTopics();
+
+  topics.forEach((topic) => {
+    showOriginalTopicTitle(topic);
+  });
+
+  topicListGlobalState.allTranslated = false;
+  topicListGlobalState.currentLang = null;
+}
+
+/**
  * Close all dropdowns when clicking outside
  */
 let dropdownHandlerSetup = false;
@@ -843,7 +1121,169 @@ class TranslateAllButton extends Component {
   }
 }
 
-export default apiInitializer("1.6.0", (api) => {
+/**
+ * Glimmer component for "Translate Titles" button on discovery pages
+ */
+class TranslateTopicListButton extends Component {
+  @tracked isTranslating = false;
+  @tracked allTranslated = false;
+  @tracked showDropdown = false;
+  @tracked currentProgress = 0;
+  @tracked totalTopics = 0;
+  @tracked currentLang = null;
+  @tracked dropdownDirection = "down";
+
+  constructor() {
+    super(...arguments);
+    topicListComponentInstance = this;
+    this.syncFromGlobalState();
+  }
+
+  syncFromGlobalState() {
+    this.isTranslating = topicListGlobalState.isTranslating;
+    this.allTranslated = topicListGlobalState.allTranslated;
+    this.currentProgress = topicListGlobalState.progress.current;
+    this.totalTopics = topicListGlobalState.progress.total;
+    this.currentLang = topicListGlobalState.currentLang;
+  }
+
+  get buttonLabel() {
+    if (this.isTranslating) {
+      return i18n(themePrefix("post_translator.translating_topics_progress"), {
+        current: this.currentProgress,
+        total: this.totalTopics,
+      });
+    }
+    if (this.allTranslated) {
+      return i18n(themePrefix("post_translator.show_original_button"));
+    }
+    return i18n(themePrefix("post_translator.translate_topics_button"));
+  }
+
+  get showIcon() {
+    return settings.show_button_icon !== false;
+  }
+
+  get iconName() {
+    return settings.button_icon || "globe";
+  }
+
+  get buttonStyle() {
+    const bg = settings.button_background_color || "var(--tertiary)";
+    const text = settings.button_text_color || "var(--secondary)";
+    return `--pt-btn-bg: ${bg}; --pt-btn-text: ${text};`;
+  }
+
+  get containerCustomCss() {
+    const css = settings.topic_list_container_custom_css || settings.container_custom_css;
+    if (!css) return "";
+    return `.translate-topic-list-container { ${css} }`;
+  }
+
+  get showCaret() {
+    return !this.isTranslating && !this.allTranslated;
+  }
+
+  @action
+  handleButtonClick(event) {
+    event.preventDefault();
+    event.stopPropagation();
+
+    if (this.isTranslating) return;
+
+    if (this.allTranslated) {
+      showAllOriginalTopicTitles();
+      this.allTranslated = false;
+      this.currentLang = null;
+    } else {
+      if (!this.showDropdown) {
+        this.dropdownDirection = this.calculateDropdownDirection(event.currentTarget);
+      }
+      this.showDropdown = !this.showDropdown;
+    }
+  }
+
+  calculateDropdownDirection(buttonElement) {
+    const rect = buttonElement.getBoundingClientRect();
+    const viewportHeight = window.innerHeight;
+    const dropdownHeight = 150;
+
+    const spaceBelow = viewportHeight - rect.bottom;
+    const spaceAbove = rect.top;
+
+    if (spaceBelow < dropdownHeight && spaceAbove > dropdownHeight) {
+      return "up";
+    }
+
+    return "down";
+  }
+
+  @action
+  async selectLanguage(langCode, event) {
+    event.preventDefault();
+    event.stopPropagation();
+
+    this.showDropdown = false;
+    this.isTranslating = true;
+
+    const updateUI = () => {
+      this.syncFromGlobalState();
+    };
+
+    await translateAllTopicTitles(langCode, updateUI);
+
+    this.syncFromGlobalState();
+  }
+
+  @action
+  closeDropdown() {
+    this.showDropdown = false;
+  }
+
+  <template>
+    {{#if this.containerCustomCss}}
+      <style>{{this.containerCustomCss}}</style>
+    {{/if}}
+    <div class="translate-topic-list-container">
+      <div class="post-translate-dropdown dropdown-{{this.dropdownDirection}} {{if this.showDropdown 'is-open'}}" style={{this.buttonStyle}}>
+        <button
+          class="btn post-translate-btn"
+          type="button"
+          disabled={{this.isTranslating}}
+          {{on "click" this.handleButtonClick}}
+        >
+          {{#if this.showIcon}}
+            <svg class="fa d-icon svg-icon svg-string" xmlns="http://www.w3.org/2000/svg"><use href="#{{this.iconName}}"></use></svg>
+          {{/if}}
+          {{#if this.buttonLabel}}
+            <span class="d-button-label">{{this.buttonLabel}}</span>
+          {{/if}}
+          {{#if this.showCaret}}
+            <svg class="fa d-icon d-icon-caret-down svg-icon svg-string dropdown-caret" xmlns="http://www.w3.org/2000/svg"><use href="#caret-down"></use></svg>
+          {{/if}}
+        </button>
+
+        <div class="post-translate-menu">
+          {{#each this.languages as |lang|}}
+            <button
+              class="post-translate-menu-item"
+              type="button"
+              {{on "click" (fn this.selectLanguage lang.code)}}
+            >
+              {{lang.label}}
+            </button>
+          {{/each}}
+        </div>
+      </div>
+    </div>
+  </template>
+
+  get languages() {
+    return SUPPORTED_LANGUAGES;
+  }
+}
+
+export default apiInitializer("1.7.0", (api) => {
   // Check if feature is enabled
   if (!settings.show_translation_button) {
     return;
@@ -856,7 +1296,7 @@ export default apiInitializer("1.6.0", (api) => {
     return;
   }
 
-  console.log("[Post Translator] Initializing v1.6.0 (Model-based) for user:", currentUser.username);
+  console.log("[Post Translator] Initializing v1.7.0 (Model-based + Topic List) for user:", currentUser.username);
 
   // Store API reference for postStream access
   apiReference = api;
@@ -872,35 +1312,66 @@ export default apiInitializer("1.6.0", (api) => {
   // With Model-based approach, we just reset state - no DOM cleanup needed
   // Glimmer handles all DOM lifecycle automatically
   const router = api.container.lookup("service:router");
-  router.on("routeWillChange", () => {
+  router.on("routeWillChange", (transition) => {
+    const fromRoute = transition.from?.name || "";
+    const toRoute = transition.to?.name || "";
+
     if (settings.debug_mode) {
-      console.log("[Post Translator] routeWillChange: resetting state (Model-based approach)");
+      console.log(`[Post Translator] routeWillChange: ${fromRoute} -> ${toRoute}`);
     }
 
-    // Clear translation state - Model changes don't persist across routes
-    translationState.clear();
+    // Reset topic detail page state when leaving topic pages
+    if (fromRoute.startsWith("topic.")) {
+      // Clear translation state - Model changes don't persist across routes
+      translationState.clear();
 
-    // Reset global state
-    globalState = {
-      isTranslating: false,
-      allTranslated: false,
-      currentLang: null,
-      progress: { current: 0, total: 0 },
-      abortController: null,
-    };
+      // Reset global state
+      globalState = {
+        isTranslating: false,
+        allTranslated: false,
+        currentLang: null,
+        progress: { current: 0, total: 0 },
+        abortController: null,
+      };
 
-    // Reset title state
-    titleState = {
-      isTranslated: false,
-      originalTitle: null,
-      originalFancyTitle: null,
-      translatedTitle: null,
-      translatedLang: null,
-    };
+      // Reset title state
+      titleState = {
+        isTranslated: false,
+        originalTitle: null,
+        originalFancyTitle: null,
+        translatedTitle: null,
+        translatedLang: null,
+      };
 
-    // Update component if it exists
-    if (componentInstance) {
-      componentInstance.syncFromGlobalState();
+      // Update component if it exists
+      if (componentInstance) {
+        componentInstance.syncFromGlobalState();
+      }
+
+      if (settings.debug_mode) {
+        console.log("[Post Translator] Reset topic detail page state");
+      }
+    }
+
+    // Reset topic list state when leaving discovery pages
+    if (fromRoute.startsWith("discovery.")) {
+      topicListState.clear();
+
+      topicListGlobalState = {
+        isTranslating: false,
+        allTranslated: false,
+        currentLang: null,
+        progress: { current: 0, total: 0 },
+        abortController: null,
+      };
+
+      if (topicListComponentInstance) {
+        topicListComponentInstance.syncFromGlobalState();
+      }
+
+      if (settings.debug_mode) {
+        console.log("[Post Translator] Reset topic list state");
+      }
     }
   });
 
@@ -919,13 +1390,21 @@ export default apiInitializer("1.6.0", (api) => {
     }
 
     // Setup new observers after a short delay (wait for topic to render)
-    setTimeout(() => {
-      translationObserver = setupTranslationObserver();
-      stickyHeaderObserver = setupStickyHeaderObserver();
-    }, 500);
+    const pageType = getPageType();
+    if (pageType === "topic") {
+      setTimeout(() => {
+        translationObserver = setupTranslationObserver();
+        stickyHeaderObserver = setupStickyHeaderObserver();
+      }, 500);
+    }
   });
 
-  // Render the Translate All button at the configured outlet position
+  // Render the Translate All button at the configured outlet position (topic detail pages)
   const outlet = settings.button_outlet_position || "topic-above-post-stream";
   api.renderInOutlet(outlet, TranslateAllButton);
+
+  // Render the Translate Topic List button on discovery pages (if enabled)
+  if (settings.show_topic_list_translation !== false) {
+    api.renderInOutlet("discovery-list-container-top", TranslateTopicListButton);
+  }
 });

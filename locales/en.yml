@@ -2,9 +2,11 @@ en:
   post_translator:
     translate_button: "Translate"
     translate_all_button: "Translate All"
+    translate_topics_button: "Translate Titles"
     show_original_button: "Show Original"
     translating: "Translating..."
     translating_progress: "Translating... (%{current}/%{total})"
+    translating_topics_progress: "Translating... (%{current}/%{total})"
     error_generic: "Translation failed. Please try again."
     error_timeout: "Translation request timed out."
     error_network: "Network error. Please check your connection."
@@ -24,3 +26,5 @@ en:
       button_text_translate: "Translate button text (leave empty for icon-only)"
       button_text_show_original: "Show original button text (leave empty for icon-only)"
       container_custom_css: "CSS properties for .translate-all-container (injected via style tag)"
+      show_topic_list_translation: "Show translation button on topic list pages (hot, latest, categories, etc.)"
+      topic_list_container_custom_css: "CSS properties for .translate-topic-list-container (injected via style tag)"

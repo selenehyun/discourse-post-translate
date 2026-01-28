@@ -9,6 +9,12 @@
   box-sizing: border-box;
 }
 
+// Topic list translate container (discovery pages)
+// Base styles minimal - use topic_list_container_custom_css setting for layout customization
+.translate-topic-list-container {
+  box-sizing: border-box;
+}
+
 // Progress indicator styling
 .translate-all-progress {
   color: var(--primary-medium);

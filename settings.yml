@@ -74,3 +74,17 @@ container_custom_css:
   description:
     en: "CSS properties for .translate-all-container (injected via style tag)"
     ko: ".translate-all-container에 적용할 CSS 속성 (style 태그로 주입)"
+
+show_topic_list_translation:
+  type: bool
+  default: true
+  description:
+    en: "Show translation button on topic list pages (hot, latest, categories, etc.)"
+    ko: "게시글 목록 페이지(hot, latest, categories 등)에 번역 버튼 표시"
+
+topic_list_container_custom_css:
+  type: string
+  default: "display: flex; justify-content: flex-end; margin-bottom: 1em; padding: 0 0.5em;"
+  description:
+    en: "CSS properties for .translate-topic-list-container (injected via style tag)"
+    ko: ".translate-topic-list-container에 적용할 CSS 속성 (style 태그로 주입)"
