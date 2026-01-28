@@ -835,6 +835,7 @@ async function translateAllTopicTitles(targetLang, updateCallback) {
   }
 
   topicListGlobalState.isTranslating = true;
+  topicListGlobalState.currentLang = targetLang;  // Set early so newly loaded topics can use it
   topicListGlobalState.progress.total = total;
   topicListGlobalState.progress.current = 0;
 
@@ -870,7 +871,6 @@ async function translateAllTopicTitles(targetLang, updateCallback) {
 
   topicListGlobalState.isTranslating = false;
   topicListGlobalState.allTranslated = successCount > 0;
-  topicListGlobalState.currentLang = targetLang;
 
   if (settings.debug_mode) {
     console.log(`[Post Translator] Topic list translation complete. ${successCount}/${total} topics translated, ${skippedCount} skipped.`);
