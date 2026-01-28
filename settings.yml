@@ -34,15 +34,11 @@ debug_mode:
     ko: "콘솔에 디버그 로깅 활성화"
 
 button_outlet_position:
-  type: enum
+  type: string
   default: "topic-above-post-stream"
-  choices:
-    - topic-above-post-stream
-    - topic-below-post-stream
-    - topic-footer-buttons
   description:
-    en: "Button position"
-    ko: "버튼 위치"
+    en: "Button position (Discourse plugin outlet name). eg., topic-above-post-stream, topic-navigation-outlet"
+    ko: "버튼 위치 (Discourse 플러그인 아울렛 이름)"
 
 button_background_color:
   type: string
