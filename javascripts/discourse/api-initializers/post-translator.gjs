@@ -44,6 +44,10 @@ let topicListGlobalState = {
 // Reference to topic list component instance
 let topicListComponentInstance = null;
 
+// Queue for newly loaded topics during infinite scroll (rate limiting)
+const pendingTopicTranslations = new Set();
+let pendingTranslationTimeout = null;
+
 // Supported target languages
 const SUPPORTED_LANGUAGES = [
   { code: "en", label: "English" },
@@ -913,8 +917,8 @@ function applyTopicTitleTranslationById(topicId, translatedText) {
  * Translate a newly loaded topic during infinite scroll
  */
 async function translateNewlyLoadedTopic(topicId) {
-  // Skip if not in translation mode
-  if (!topicListGlobalState.allTranslated) return;
+  // Skip if not in translation mode (neither translating nor all translated)
+  if (!topicListGlobalState.isTranslating && !topicListGlobalState.allTranslated) return;
 
   // Check if already translated (cached)
   const existingState = topicListState.get(topicId);
@@ -961,6 +965,59 @@ async function translateNewlyLoadedTopic(topicId) {
 }
 
 /**
+ * Queue a topic for translation (rate limiting)
+ * Uses debounce to batch newly loaded topics and process them sequentially
+ */
+function queueTopicForTranslation(topicId) {
+  pendingTopicTranslations.add(topicId);
+
+  if (settings.debug_mode) {
+    console.log(`[Post Translator] Queued topic ${topicId} for translation (queue size: ${pendingTopicTranslations.size})`);
+  }
+
+  // Debounce: wait 300ms after last topic added, then process all
+  if (pendingTranslationTimeout) {
+    clearTimeout(pendingTranslationTimeout);
+  }
+  pendingTranslationTimeout = setTimeout(() => {
+    processPendingTopicTranslations();
+    pendingTranslationTimeout = null;
+  }, 300);
+}
+
+/**
+ * Process all pending topic translations sequentially (rate limiting)
+ * Called after debounce delay to batch and throttle API calls
+ */
+async function processPendingTopicTranslations() {
+  if (pendingTopicTranslations.size === 0) return;
+
+  const topicIds = Array.from(pendingTopicTranslations);
+  pendingTopicTranslations.clear();
+
+  const targetLang = topicListGlobalState.currentLang;
+  if (!targetLang) {
+    if (settings.debug_mode) {
+      console.log("[Post Translator] No target language set, skipping pending translations");
+    }
+    return;
+  }
+
+  if (settings.debug_mode) {
+    console.log(`[Post Translator] Processing ${topicIds.length} pending topic translations`);
+  }
+
+  // Process sequentially to avoid overwhelming the API
+  for (const topicId of topicIds) {
+    await translateNewlyLoadedTopic(topicId);
+  }
+
+  if (settings.debug_mode) {
+    console.log(`[Post Translator] Finished processing pending topic translations`);
+  }
+}
+
+/**
  * Setup MutationObserver for topic list to auto-translate newly loaded topics
  * during infinite scroll when translation mode is active
  */
@@ -974,8 +1031,8 @@ function setupTopicListObserver() {
   }
 
   const observer = new MutationObserver((mutations) => {
-    // Only act if topic list translation is active
-    if (!topicListGlobalState.allTranslated) return;
+    // Only act if topic list translation is active (translating OR already translated)
+    if (!topicListGlobalState.isTranslating && !topicListGlobalState.allTranslated) return;
 
     for (const mutation of mutations) {
       mutation.addedNodes.forEach((node) => {
@@ -989,7 +1046,8 @@ function setupTopicListObserver() {
         rows.forEach((row) => {
           const topicId = parseInt(row.dataset.topicId, 10);
           if (!isNaN(topicId)) {
-            translateNewlyLoadedTopic(topicId);
+            // Queue for translation with rate limiting
+            queueTopicForTranslation(topicId);
           }
         });
       });
