@@ -739,6 +739,8 @@ class TranslateAllButton extends Component {
     return !this.isTranslating && !this.allTranslated;
   }
 
+  @tracked dropdownDirection = "down";
+
   @action
   handleButtonClick(event) {
     event.preventDefault();
@@ -751,8 +753,29 @@ class TranslateAllButton extends Component {
       this.allTranslated = false;
       this.currentLang = null;
     } else {
+      if (!this.showDropdown) {
+        // Calculate dropdown direction based on viewport
+        this.dropdownDirection = this.calculateDropdownDirection(event.currentTarget);
+      }
       this.showDropdown = !this.showDropdown;
     }
+  }
+
+  calculateDropdownDirection(buttonElement) {
+    const rect = buttonElement.getBoundingClientRect();
+    const viewportHeight = window.innerHeight;
+    const dropdownHeight = 150; // Approximate dropdown menu height
+
+    const spaceBelow = viewportHeight - rect.bottom;
+    const spaceAbove = rect.top;
+
+    // If not enough space below but enough above, show dropdown upward
+    if (spaceBelow < dropdownHeight && spaceAbove > dropdownHeight) {
+      return "up";
+    }
+
+    // Default: show dropdown downward
+    return "down";
   }
 
   @action
@@ -782,7 +805,7 @@ class TranslateAllButton extends Component {
       <style>{{this.containerCustomCss}}</style>
     {{/if}}
     <div class="translate-all-container">
-      <div class="post-translate-dropdown {{if this.showDropdown 'is-open'}}" style={{this.buttonStyle}}>
+      <div class="post-translate-dropdown dropdown-{{this.dropdownDirection}} {{if this.showDropdown 'is-open'}}" style={{this.buttonStyle}}>
         <button
           class="btn post-translate-btn"
           type="button"

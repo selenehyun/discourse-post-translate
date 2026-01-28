@@ -97,29 +97,46 @@
   z-index: 1000;
   overflow: hidden;
 
-  // Default: dropdown opens above (for post-level buttons)
-  bottom: 100%;
-  margin-bottom: 6px;
-
-  // In translate-all container: dropdown opens below
-  .translate-all-container & {
-    bottom: auto;
-    top: 100%;
-    margin-bottom: 0;
-    margin-top: 6px;
-  }
-
   .post-translate-dropdown.is-open & {
     display: block;
-    animation: dropdown-fade-in 0.15s ease-out;
+  }
+
+  // Dropdown opens downward (default)
+  .post-translate-dropdown.dropdown-down & {
+    top: 100%;
+    bottom: auto;
+    margin-top: 6px;
+    margin-bottom: 0;
+    animation: dropdown-fade-in-down 0.15s ease-out;
+  }
+
+  // Dropdown opens upward (when near bottom of viewport)
+  .post-translate-dropdown.dropdown-up & {
+    bottom: 100%;
+    top: auto;
+    margin-bottom: 6px;
+    margin-top: 0;
+    animation: dropdown-fade-in-up 0.15s ease-out;
   }
 }
 
-// Dropdown animation
-@keyframes dropdown-fade-in {
+// Dropdown animation - downward
+@keyframes dropdown-fade-in-down {
   from {
     opacity: 0;
     transform: translateY(-4px);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
+
+// Dropdown animation - upward
+@keyframes dropdown-fade-in-up {
+  from {
+    opacity: 0;
+    transform: translateY(4px);
   }
   to {
     opacity: 1;
