@@ -1190,6 +1190,13 @@ class TranslateAllButton extends Component {
     return !this.isTranslating && !this.allTranslated;
   }
 
+  get hasPosts() {
+    const topicController = apiReference?.container?.lookup("controller:topic");
+    const postStream = topicController?.model?.postStream;
+    const posts = postStream?.posts || [];
+    return posts.length > 0;
+  }
+
   @tracked dropdownDirection = "down";
 
   @action
@@ -1252,41 +1259,43 @@ class TranslateAllButton extends Component {
   }
 
   <template>
-    {{#if this.containerCustomCss}}
-      <style>{{this.containerCustomCss}}</style>
-    {{/if}}
-    <div class="translate-all-container">
-      <div class="post-translate-dropdown dropdown-{{this.dropdownDirection}} {{if this.showDropdown 'is-open'}}" style={{this.buttonStyle}}>
-        <button
-          class="btn post-translate-btn"
-          type="button"
-          disabled={{this.isTranslating}}
-          {{on "click" this.handleButtonClick}}
-        >
-          {{#if this.showIcon}}
-            <svg class="fa d-icon svg-icon svg-string" xmlns="http://www.w3.org/2000/svg"><use href="#{{this.iconName}}"></use></svg>
-          {{/if}}
-          {{#if this.buttonLabel}}
-            <span class="d-button-label">{{this.buttonLabel}}</span>
-          {{/if}}
-          {{#if this.showCaret}}
-            <svg class="fa d-icon d-icon-caret-down svg-icon svg-string dropdown-caret" xmlns="http://www.w3.org/2000/svg"><use href="#caret-down"></use></svg>
-          {{/if}}
-        </button>
+    {{#if this.hasPosts}}
+      {{#if this.containerCustomCss}}
+        <style>{{this.containerCustomCss}}</style>
+      {{/if}}
+      <div class="translate-all-container">
+        <div class="post-translate-dropdown dropdown-{{this.dropdownDirection}} {{if this.showDropdown 'is-open'}}" style={{this.buttonStyle}}>
+          <button
+            class="btn post-translate-btn"
+            type="button"
+            disabled={{this.isTranslating}}
+            {{on "click" this.handleButtonClick}}
+          >
+            {{#if this.showIcon}}
+              <svg class="fa d-icon svg-icon svg-string" xmlns="http://www.w3.org/2000/svg"><use href="#{{this.iconName}}"></use></svg>
+            {{/if}}
+            {{#if this.buttonLabel}}
+              <span class="d-button-label">{{this.buttonLabel}}</span>
+            {{/if}}
+            {{#if this.showCaret}}
+              <svg class="fa d-icon d-icon-caret-down svg-icon svg-string dropdown-caret" xmlns="http://www.w3.org/2000/svg"><use href="#caret-down"></use></svg>
+            {{/if}}
+          </button>
 
-        <div class="post-translate-menu">
-          {{#each this.languages as |lang|}}
-            <button
-              class="post-translate-menu-item"
-              type="button"
-              {{on "click" (fn this.selectLanguage lang.code)}}
-            >
-              {{lang.label}}
-            </button>
-          {{/each}}
+          <div class="post-translate-menu">
+            {{#each this.languages as |lang|}}
+              <button
+                class="post-translate-menu-item"
+                type="button"
+                {{on "click" (fn this.selectLanguage lang.code)}}
+              >
+                {{lang.label}}
+              </button>
+            {{/each}}
+          </div>
         </div>
       </div>
-    </div>
+    {{/if}}
   </template>
 
   get languages() {
@@ -1357,6 +1366,11 @@ class TranslateTopicListButton extends Component {
     return !this.isTranslating && !this.allTranslated;
   }
 
+  get hasTopics() {
+    const topics = getDiscoveryTopics();
+    return topics && topics.length > 0;
+  }
+
   @action
   handleButtonClick(event) {
     event.preventDefault();
@@ -1414,41 +1428,43 @@ class TranslateTopicListButton extends Component {
   }
 
   <template>
-    {{#if this.containerCustomCss}}
-      <style>{{this.containerCustomCss}}</style>
-    {{/if}}
-    <div class="translate-topic-list-container">
-      <div class="post-translate-dropdown dropdown-{{this.dropdownDirection}} {{if this.showDropdown 'is-open'}}" style={{this.buttonStyle}}>
-        <button
-          class="btn post-translate-btn"
-          type="button"
-          disabled={{this.isTranslating}}
-          {{on "click" this.handleButtonClick}}
-        >
-          {{#if this.showIcon}}
-            <svg class="fa d-icon svg-icon svg-string" xmlns="http://www.w3.org/2000/svg"><use href="#{{this.iconName}}"></use></svg>
-          {{/if}}
-          {{#if this.buttonLabel}}
-            <span class="d-button-label">{{this.buttonLabel}}</span>
-          {{/if}}
-          {{#if this.showCaret}}
-            <svg class="fa d-icon d-icon-caret-down svg-icon svg-string dropdown-caret" xmlns="http://www.w3.org/2000/svg"><use href="#caret-down"></use></svg>
-          {{/if}}
-        </button>
+    {{#if this.hasTopics}}
+      {{#if this.containerCustomCss}}
+        <style>{{this.containerCustomCss}}</style>
+      {{/if}}
+      <div class="translate-topic-list-container">
+        <div class="post-translate-dropdown dropdown-{{this.dropdownDirection}} {{if this.showDropdown 'is-open'}}" style={{this.buttonStyle}}>
+          <button
+            class="btn post-translate-btn"
+            type="button"
+            disabled={{this.isTranslating}}
+            {{on "click" this.handleButtonClick}}
+          >
+            {{#if this.showIcon}}
+              <svg class="fa d-icon svg-icon svg-string" xmlns="http://www.w3.org/2000/svg"><use href="#{{this.iconName}}"></use></svg>
+            {{/if}}
+            {{#if this.buttonLabel}}
+              <span class="d-button-label">{{this.buttonLabel}}</span>
+            {{/if}}
+            {{#if this.showCaret}}
+              <svg class="fa d-icon d-icon-caret-down svg-icon svg-string dropdown-caret" xmlns="http://www.w3.org/2000/svg"><use href="#caret-down"></use></svg>
+            {{/if}}
+          </button>
 
-        <div class="post-translate-menu">
-          {{#each this.languages as |lang|}}
-            <button
-              class="post-translate-menu-item"
-              type="button"
-              {{on "click" (fn this.selectLanguage lang.code)}}
-            >
-              {{lang.label}}
-            </button>
-          {{/each}}
+          <div class="post-translate-menu">
+            {{#each this.languages as |lang|}}
+              <button
+                class="post-translate-menu-item"
+                type="button"
+                {{on "click" (fn this.selectLanguage lang.code)}}
+              >
+                {{lang.label}}
+              </button>
+            {{/each}}
+          </div>
         </div>
       </div>
-    </div>
+    {{/if}}
   </template>
 
   get languages() {
