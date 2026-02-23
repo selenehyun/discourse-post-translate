@@ -18,7 +18,7 @@ This guide covers Discourse theme component development patterns and the Post Tr
 ## File Structure
 
 ```
-cloudbro-discourse/
+discourse-post-translate/
 ├── about.json                          # Component metadata
 ├── settings.yml                        # Admin-configurable settings
 ├── CLAUDE.md                           # This guide
